@@ -1,26 +1,73 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #F8FAFC;
+    --foreground: #0F172A;
+    --primary: #2563EB;
+    --primary-hover: #1D4ED8;
+    --primary-light: #EFF6FF;
+    --card: #FFFFFF;
+    --card-foreground: #0F172A;
+    --border: #E2E8F0;
+    --muted: #64748B;
+    --muted-bg: #F1F5F9;
+
+    /* Traffic-Light System */
+    --status-covered: #10B981;
+    --status-covered-bg: #ECFDF5;
+    --status-covered-text: #065F46;
+    --status-review: #F59E0B;
+    --status-review-bg: #FFFBEB;
+    --status-review-text: #92400E;
+    --status-out-of-pocket: #EF4444;
+    --status-out-of-pocket-bg: #FEF2F2;
+    --status-out-of-pocket-text: #991B1B;
   }
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Safe area insets for mobile iOS / Android viewports */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 16px);
+}
+
+/* Custom Soft Shadows */
+.shadow-soft {
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+}
+
+.shadow-card-hover {
+  box-shadow: 0 10px 25px -3px rgba(37, 99, 235, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.02);
+}
+
+.shadow-glow {
+  box-shadow: 0 0 24px -2px rgba(37, 99, 235, 0.5);
+}
+
+/* Desktop vs Mobile display helpers */
+@media (min-width: 768px) {
+  .mobile-only-bottom-nav {
+    display: none !important;
+  }
+  .desktop-only-nav {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .desktop-only-nav {
+    display: none !important;
+  }
 }
