@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   transpilePackages: ["lucide-react"],
   experimental: {
+    agentUpgrade: "security",
     optimizePackageImports: ["lucide-react"],
   },
   turbopack: {
