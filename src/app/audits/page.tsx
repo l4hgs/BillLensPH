@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Coins,
@@ -8,14 +8,15 @@ import {
   SlidersHorizontal,
   ChevronRight,
   ShieldCheck,
-  FileText,
   Camera,
   ArrowRight,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ModeSelector } from "@/components/layout/ModeSelector";
 import { cn, formatPHP } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { formatFileSize } from "@/lib/imageCompression";
 
 interface AuditDoc {
   id: string;
@@ -24,13 +25,14 @@ interface AuditDoc {
   fileSize: string;
   fileType: "PDF" | "DOCX" | "Scan";
   dateText: string;
+  isLive?: boolean;
   tags: {
     label: string;
     variant: "rose" | "emerald" | "slate" | "blue" | "teal";
   }[];
 }
 
-const auditDocuments: AuditDoc[] = [
+const sampleAuditDocuments: AuditDoc[] = [
   {
     id: "doc-1",
     facility: "St. Luke's Medical Center - BGC",
@@ -86,17 +88,102 @@ const auditDocuments: AuditDoc[] = [
     fileSize: "1.9 MB",
     fileType: "PDF",
     dateText: "15.03.2024",
-    tags: [
-      { label: "Malasakit Center Credit", variant: "teal" },
-    ],
+    tags: [{ label: "Malasakit Center Credit", variant: "teal" }],
   },
 ];
 
 export default function DocumentArchivePage() {
-  const [activeTab, setActiveTab] = useState<"Today" | "This week" | "All Documents" | "Archive">("This week");
+  const [activeTab, setActiveTab] = useState<
+    "Today" | "This week" | "All Documents" | "Archive"
+  >("This week");
   const [searchQuery, setSearchQuery] = useState("");
+  const [liveDocs, setLiveDocs] = useState<AuditDoc[]>([]);
 
-  const filteredDocs = auditDocuments.filter((doc) =>
+  useEffect(() => {
+    let isMounted = true;
+    async function loadUserAudits() {
+      try {
+        const supabase = createClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        let user = session?.user ?? null;
+        if (!user) {
+          const {
+            data: { user: fetchedUser },
+          } = await supabase.auth.getUser();
+          user = fetchedUser;
+        }
+        if (!user) return;
+
+        const { data: rows } = await supabase
+          .from("audits")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (!rows || !isMounted) return;
+
+        const mapped: AuditDoc[] = rows.map((row) => {
+          const raw = (row.raw_extracted_data ?? {}) as Record<string, unknown>;
+          const files = Array.isArray(raw.files)
+            ? (raw.files as Record<string, unknown>[])
+            : [];
+          const totalCompressed = files.reduce(
+            (sum, f) =>
+              sum +
+              (typeof f.compressed_size === "number" ? f.compressed_size : 0),
+            0
+          );
+          const firstMime =
+            typeof files[0]?.mime_type === "string" ? files[0].mime_type : "";
+          const isPdf = firstMime === "application/pdf";
+          const pageCount =
+            typeof raw.page_count === "number"
+              ? raw.page_count
+              : Math.max(1, files.length);
+
+          return {
+            id: row.id,
+            facility: row.hospital_name || "Draft Hospital Statement",
+            total: Number(row.total_billed ?? 0),
+            fileSize:
+              totalCompressed > 0 ? formatFileSize(totalCompressed) : "Staged",
+            fileType: isPdf ? "PDF" : "Scan",
+            dateText: new Date(row.created_at).toLocaleDateString("en-PH", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }),
+            isLive: true,
+            tags: [
+              {
+                label: "Staged for Week 3 AI OCR",
+                variant: "blue",
+              },
+              {
+                label: `${pageCount} ${pageCount === 1 ? "Page" : "Pages"} • Encrypted`,
+                variant: "emerald",
+              },
+            ],
+          };
+        });
+
+        setLiveDocs(mapped);
+      } catch {
+        // Ignore if unauthenticated or offline
+      }
+    }
+
+    loadUserAudits();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const combinedDocs = [...liveDocs, ...sampleAuditDocuments];
+
+  const filteredDocs = combinedDocs.filter((doc) =>
     doc.facility.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -184,7 +271,10 @@ export default function DocumentArchivePage() {
         {filteredDocs.map((doc) => (
           <Card
             key={doc.id}
-            className="hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group"
+            className={cn(
+              "hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group",
+              doc.isLive && "border-blue-200/90 ring-1 ring-blue-500/10"
+            )}
           >
             <CardContent className="p-4 flex items-center justify-between gap-3">
               <div className="flex items-start gap-3.5 flex-1 min-w-0">
@@ -210,11 +300,19 @@ export default function DocumentArchivePage() {
                 {/* Details */}
                 <div className="space-y-1.5 flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <h4 className="font-bold text-sm text-slate-900 truncate group-hover:text-blue-600 transition-colors">
-                      {doc.facility}
-                    </h4>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <h4 className="font-bold text-sm text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        {doc.facility}
+                      </h4>
+                      {doc.isLive && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white shrink-0">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          <span>LIVE</span>
+                        </span>
+                      )}
+                    </div>
                     <span className="font-extrabold text-sm text-slate-900 shrink-0">
-                      {formatPHP(doc.total)}
+                      {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
                     </span>
                   </div>
 

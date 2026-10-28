@@ -17,16 +17,16 @@ BillLens PH is a mobile-first web application that translates opaque Philippine 
 ## 3. Sprint Breakdown (6-Week Timeline)
 
 ### Week 1: Foundation, Auth & Mobile UI Shell
-* [ ] Initialize Next.js repository with TypeScript and Tailwind CSS.
-* [ ] Install and configure Shadcn UI primitives (Card, Button, Dialog, Sheet, Tabs).
-* [ ] Set up Supabase project and connect environment variables.
-* [ ] Implement Supabase Auth (Email/Password & Google OAuth).
-* [ ] Build mobile layout shell (Bottom navigation bar, responsive header, mobile container frames matching scanner UI).
+* [x] Initialize Next.js repository with TypeScript and Tailwind CSS.
+* [x] Install and configure Shadcn UI primitives (Card, Button, Dialog, Sheet, Tabs).
+* [x] Set up Supabase project and connect environment variables.
+* [x] Implement Supabase Auth (Email/Password & Google OAuth).
+* [x] Build mobile layout shell (Bottom navigation bar, responsive header, mobile container frames matching scanner UI).
 
 ### Week 2: Document Ingestion & Camera/Upload Flow
-* [ ] Build the Upload / Camera Capture screen (featuring quick mode selectors and dropzone upload card).
-* [ ] Implement client-side image compression (resizing mobile photos to reduce payload size and speed up OCR).
-* [ ] Create Supabase storage bucket for temporary bill uploads with strict Row-Level Security (RLS).
+* [x] Build the Upload / Camera Capture screen (featuring quick mode selectors and dropzone upload card).
+* [x] Implement client-side image compression (resizing mobile photos to reduce payload size and speed up OCR).
+* [x] Create Supabase storage bucket for temporary bill uploads with strict Row-Level Security (RLS).
 
 ### Week 3: AI Vision OCR & Rule-Based Matching Engine
 * [ ] Seed Supabase database with core PhilHealth case rates and Z-benefit rules (e.g., Angioplasty, Appendectomy, Maternity).

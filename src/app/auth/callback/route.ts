@@ -4,7 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/";
+  const oauthError =
+    searchParams.get("error_description") || searchParams.get("error");
+  const next = searchParams.get("next") ?? "/scanner";
+
+  if (oauthError) {
+    return NextResponse.redirect(
+      `${origin}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
+        oauthError
+      )}`
+    );
+  }
 
   if (code) {
     const supabase = await createClient();
@@ -20,8 +30,18 @@ export async function GET(request: Request) {
         return NextResponse.redirect(`${origin}${next}`);
       }
     }
+
+    return NextResponse.redirect(
+      `${origin}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
+        error.message
+      )}`
+    );
   }
 
-  // Return the user to an error page or login with instructions
-  return NextResponse.redirect(`${origin}/auth?error=auth_exchange_failed`);
+  // Return the user to login with instructions
+  return NextResponse.redirect(
+    `${origin}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
+      "No authorization code received from OAuth callback."
+    )}`
+  );
 }

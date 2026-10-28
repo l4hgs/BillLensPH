@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       profiles: {
@@ -25,6 +25,7 @@ export interface Database {
           full_name?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
       audits: {
         Row: {
@@ -57,6 +58,7 @@ export interface Database {
           audit_results?: Json | null;
           created_at?: string;
         };
+        Relationships: [];
       };
       philhealth_packages: {
         Row: {
@@ -86,7 +88,20 @@ export interface Database {
           total_case_rate?: number;
           inclusive_items?: string[];
         };
+        Relationships: [];
       };
     };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
-}
+};

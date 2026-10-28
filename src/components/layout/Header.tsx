@@ -14,9 +14,19 @@ export function Header() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    }).catch(() => {});
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          setUser(session.user);
+        } else {
+          return supabase.auth.getUser().then(({ data: { user: fetchedUser } }) => {
+            setUser(fetchedUser ?? null);
+          });
+        }
+      })
+      .catch(() => {});
 
     const {
       data: { subscription },
@@ -27,7 +37,7 @@ export function Header() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [pathname]);
 
   const getPageTitle = () => {
     if (pathname === "/scanner") return "Scan Hub";
@@ -113,18 +123,24 @@ export function Header() {
           {user ? (
             <Link
               href="/auth"
-              className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-xs hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold hover:bg-emerald-100/80 transition-colors"
               title={user.email || "User profile"}
             >
-              {user.email ? user.email.charAt(0).toUpperCase() : "U"}
+              <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold">
+                {user.email ? user.email.charAt(0).toUpperCase() : "U"}
+              </span>
+              <span className="hidden sm:inline max-w-[120px] truncate">
+                {user.user_metadata?.full_name || user.email?.split("@")[0]}
+              </span>
             </Link>
           ) : (
             <Link
               href="/auth"
-              className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold shadow-xs hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-semibold shadow-xs hover:bg-blue-700 transition-colors"
               title="Sign in"
             >
-              <UserIcon className="w-4 h-4" />
+              <UserIcon className="w-3.5 h-3.5" />
+              <span>Sign In</span>
             </Link>
           )}
         </div>
