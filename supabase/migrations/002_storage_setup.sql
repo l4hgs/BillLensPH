@@ -1,5 +1,5 @@
 -- ============================================================================
--- BillLens PH — Week 2: Supabase Storage & RLS Setup (`bill-uploads`)
+-- BillLens PH — Migration 002: Supabase Storage & RLS Setup (`bill-uploads`)
 -- Run this script in your Supabase Dashboard -> SQL Editor
 -- ============================================================================
 

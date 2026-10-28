@@ -4,7 +4,7 @@
 * **Current App Version:** Next.js `16.4.3` (Turbopack, TypeScript 5, Tailwind CSS v4)
 * **Completed Sprints:**
   * **Week 1 (100% Complete):** Live Supabase Auth (Google OAuth & Email/Password with clock-skew tolerant session persistence), database schema (`profiles`, `audits`, `philhealth_packages`), and mobile-first UI shell.
-  * **Week 2 (100% Complete):** Private `bill-uploads` Supabase Storage bucket with 4 RLS policies, client-side WebP/JPEG image compression engine (`src/lib/imageCompression.ts`), interactive viewfinder dropzone (`src/app/scanner/page.tsx`), and live database staging in `public.audits`.
+  * **Week 2 (100% Complete):** Private `bill-uploads` Supabase Storage bucket with 4 RLS policies (`supabase/migrations/002_storage_setup.sql`), client-side WebP/JPEG image compression engine (`src/lib/imageCompression.ts`), modular viewfinder dropzone (`src/components/scanner/*`), and live database staging in `public.audits`.
 * **API Keys:** Both Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) and Google Gemini (`GEMINI_API_KEY`) are configured in `.env.local`.
 
 ---
@@ -17,7 +17,7 @@ The goal of Week 3 is to build the **AI Vision OCR & Rule-Based Matching Engine*
 ## 📝 Actionable To-Do List
 
 ### 1. Seed PhilHealth Case Rates & Z-Benefit Database
-- [ ] Create `supabase/seed_philhealth_packages.sql` to populate `public.philhealth_packages` (and configure public read RLS policy):
+- [ ] Create `supabase/seeds/seed_philhealth_packages.sql` to populate `public.philhealth_packages` (and configure public read RLS policy):
   - Core surgical & medical procedures (e.g., Laparoscopic Cholecystectomy `47562`, Appendectomy `44970`, Coronary Angiography `93458`, Normal Spontaneous Delivery `59400`, Cesarean Section `59510`, Hemodialysis `90935`, Community-Acquired Pneumonia `J18.9`, Dengue Fever `A97.1`).
   - Populate `hci_fee`, `prof_fee`, `total_case_rate`, and `inclusive_items` (standard OR supplies, routine medications, contrast media, room & board inclusions) to detect unbundled overcharges.
 - [ ] Connect `src/app/rates/page.tsx` to query live `philhealth_packages` rows from Supabase with fallback to local defaults.
@@ -55,5 +55,6 @@ When you start the next chat session for Week 3, you can paste the prompt below:
 ```markdown
 I am continuing the BillLens PH project.
 Weeks 1 and 2 are 100% complete (Supabase Auth, `bill-uploads` Storage bucket with RLS, client-side WebP image compression, and `audits` table staging are all live and tested).
-Please read "Week3_Objectives_BillLensPH.md" and let's begin Step 1 (creating `supabase/seed_philhealth_packages.sql` and connecting `/rates`) and Step 2 (setting up the Gemini Vision OCR route in `src/app/api/audit/ocr/route.ts`).
+Please read "docs/Week3_Objectives.md" and let's begin Step 1 (creating `supabase/seeds/seed_philhealth_packages.sql` and connecting `/rates`) and Step 2 (setting up the Gemini Vision OCR route in `src/app/api/audit/ocr/route.ts`).
 ```
+

@@ -76,3 +76,4 @@ BillLens PH is a mobile-first web application that translates opaque Philippine 
 * `prof_fee` (numeric)
 * `total_case_rate` (numeric)
 * `inclusive_items` (text[])
+

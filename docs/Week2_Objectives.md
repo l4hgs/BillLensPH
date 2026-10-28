@@ -16,7 +16,7 @@ The goal of Week 2 is to transform the static scanner viewfinder mockup into a p
 ## 📝 Actionable To-Do List
 
 ### 1. Supabase Storage Infrastructure
-- [x] Create a private Supabase Storage bucket named `bill-uploads`.
+- [x] Create a private Supabase Storage bucket named `bill-uploads` (`supabase/migrations/002_storage_setup.sql`).
 - [x] Configure Row-Level Security (RLS) policies for storage:
   - Users can upload files to their own user-scoped directory (`bill-uploads/{user_id}/*`).
   - Users can view and download their own uploaded files.
@@ -30,7 +30,7 @@ The goal of Week 2 is to transform the static scanner viewfinder mockup into a p
   - Return clean `File` or `Blob` with metadata (original size, compressed size, compression ratio).
 
 ### 3. Scanner & Dropzone UI Implementation
-- [x] Refactor `src/app/scanner/page.tsx`:
+- [x] Refactor `src/app/scanner/page.tsx` and modular scanner components (`src/components/scanner/*`):
   - Implement drag-and-drop file upload zone.
   - Add native file picker button supporting both photo capture (`capture="environment"`) and PDF/image browsing.
   - Add real-time image preview state inside the viewfinder reticle brackets once a file is selected.
@@ -42,13 +42,3 @@ The goal of Week 2 is to transform the static scanner viewfinder mockup into a p
   - Create a new draft audit record in the `audits` table (`user_id`, `hospital_name`, `created_at`).
   - Store the storage path/file URL in the audit record for Week 3 OCR ingestion.
 
----
-
-## 🚀 Quick-Start Prompt for New Chat Session
-When you start the new chat tomorrow, you can paste the prompt below:
-
-```markdown
-I am continuing the BillLens PH project. 
-Week 1 is 100% complete with live Supabase Auth and database tables configured.
-Please read "Week2_Objectives_BillLensPH.md" and let's begin Step 1: creating the Supabase `bill-uploads` storage bucket and building the client-side image compression engine in `src/lib/imageCompression.ts`.
-```
