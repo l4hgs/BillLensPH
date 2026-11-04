@@ -17,14 +17,14 @@ The goal of Week 3 is to build the **AI Vision OCR & Rule-Based Matching Engine*
 ## 📝 Actionable To-Do List
 
 ### 1. Seed PhilHealth Case Rates & Z-Benefit Database
-- [ ] Create `supabase/seeds/seed_philhealth_packages.sql` to populate `public.philhealth_packages` (and configure public read RLS policy):
+- [x] Create `supabase/seeds/seed_philhealth_packages.sql` to populate `public.philhealth_packages` (and configure public read RLS policy):
   - Core surgical & medical procedures (e.g., Laparoscopic Cholecystectomy `47562`, Appendectomy `44970`, Coronary Angiography `93458`, Normal Spontaneous Delivery `59400`, Cesarean Section `59510`, Hemodialysis `90935`, Community-Acquired Pneumonia `J18.9`, Dengue Fever `A97.1`).
   - Populate `hci_fee`, `prof_fee`, `total_case_rate`, and `inclusive_items` (standard OR supplies, routine medications, contrast media, room & board inclusions) to detect unbundled overcharges.
-- [ ] Connect `src/app/rates/page.tsx` to query live `philhealth_packages` rows from Supabase with fallback to local defaults.
+- [x] Connect `src/app/rates/page.tsx` to query live `philhealth_packages` rows from Supabase with fallback to local defaults.
 
 ### 2. AI Vision OCR Backend Route (Gemini Flash)
-- [ ] Install required AI / Gemini SDK dependencies (`@google/generative-ai` or Vercel AI SDK `@ai-sdk/google` + `ai` + `zod`).
-- [ ] Create `src/app/api/audit/ocr/route.ts` (POST handler):
+- [x] Multimodal Gemini Flash REST client (`src/lib/gemini.ts`) supporting `gemini-2.0-flash` with automatic `gemini-1.5-flash` fallback.
+- [x] Create `src/app/api/audit/ocr/route.ts` (POST handler):
   - Authenticate the requesting user and fetch the staged `audits` record and signed storage URLs from `bill-uploads`.
   - Pass the compressed bill image(s) / PDF to **Gemini Flash** with a strict structured-output schema.
   - Extract:
@@ -34,7 +34,7 @@ The goal of Week 3 is to build the **AI Vision OCR & Rule-Based Matching Engine*
     - `summary`: `{ gross_total, philhealth_total, discount_total, net_balance }`
 
 ### 3. Automated PhilHealth & Statutory Matching Engine
-- [ ] Create `src/lib/auditEngine.ts`:
+- [x] Create `src/lib/auditEngine.ts`:
   - Cross-reference extracted procedures and line items against `philhealth_packages` (`procedure_keyword`, `case_code`, and `inclusive_items`).
   - Flag **duplicate or unbundled charges** (items billed separately as out-of-pocket that should be covered inside the PhilHealth HCI/case rate bundle).
   - Verify statutory **Senior Citizen / PWD (20% discount + 12% VAT exemption)** calculations when applicable.
@@ -44,8 +44,8 @@ The goal of Week 3 is to build the **AI Vision OCR & Rule-Based Matching Engine*
     - 🔴 `out_of_pocket` (Valid Non-Covered / Upgrade / Personal Expense)
 
 ### 4. End-to-End Pipeline Wiring & Database Update
-- [ ] Trigger `/api/audit/ocr` automatically after upload in `src/app/scanner/page.tsx` (or via an **"Analyze with AI OCR"** action in `/scanner` and `/audits`).
-- [ ] Update the `public.audits` record with the real `hospital_name`, `total_billed`, `estimated_out_of_pocket`, `raw_extracted_data`, and structured `audit_results`.
+- [x] Trigger `/api/audit/ocr` automatically after upload in `src/app/scanner/page.tsx` (or via an **"Analyze with AI OCR"** action in `/scanner` and `/audits`).
+- [x] Update the `public.audits` record with the real `hospital_name`, `total_billed`, `estimated_out_of_pocket`, `raw_extracted_data`, and structured `audit_results`.
 
 ---
 

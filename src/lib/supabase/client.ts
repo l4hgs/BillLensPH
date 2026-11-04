@@ -12,11 +12,17 @@ export function createClient() {
   const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
 
-  repairSkewedBrowserAuthCookies();
+  const repairedLegacyCookie = repairSkewedBrowserAuthCookies();
 
-  return createBrowserClient<Database>(supabaseUrl, supabaseAnonKey, {
+  const client = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey, {
     global: {
       fetch: clockSkewSafeFetch,
     },
   });
+
+  if (repairedLegacyCookie) {
+    void client.auth.refreshSession();
+  }
+
+  return client;
 }

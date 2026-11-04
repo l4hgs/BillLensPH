@@ -29,14 +29,14 @@ BillLens PH is a mobile-first web application that translates opaque Philippine 
 * [x] Create Supabase storage bucket for temporary bill uploads with strict Row-Level Security (RLS).
 
 ### Week 3: AI Vision OCR & Rule-Based Matching Engine
-* [ ] Seed Supabase database with core PhilHealth case rates and Z-benefit rules (e.g., Angioplasty, Appendectomy, Maternity).
-* [ ] Set up Vercel AI SDK backend route using Gemini Flash to parse messy hospital tables into structured JSON.
-* [ ] Build the automated matching script to cross-reference extracted items against PhilHealth case rate limits.
+* [x] Seed Supabase database with core PhilHealth case rates and Z-benefit rules (e.g., Angioplasty, Appendectomy, Maternity).
+* [x] Set up Vercel AI SDK backend route using Gemini Flash to parse messy hospital tables into structured JSON.
+* [x] Build the automated matching script to cross-reference extracted items against PhilHealth case rate limits.
 
 ### Week 4: Audit Dashboard & Traffic-Light UI
-* [ ] Build the interactive Audit Studio interface.
-* [ ] Implement the **three-tier traffic-light categorization component** (🟢 Fully Covered, 🟡 Review-Worthy, 🔴 Out-of-Pocket).
-* [ ] Add the Manual Override modal for editing OCR misreads or adjusting line-item values.
+* [x] Build the interactive Audit Studio interface.
+* [x] Implement the **three-tier traffic-light categorization component** (🟢 Fully Covered, 🟡 Review-Worthy, 🔴 Out-of-Pocket).
+* [x] Add the Manual Override modal for editing OCR misreads or adjusting line-item values.
 
 ### Week 5: AI Health & Subsidy Copilot Chatbot
 * [ ] Create the floating chat drawer component in the Audit Studio.

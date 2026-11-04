@@ -17,6 +17,7 @@ import { ModeSelector } from "@/components/layout/ModeSelector";
 import { cn, formatPHP } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { formatFileSize } from "@/lib/imageCompression";
+import type { AuditEngineResult } from "@/types/audit";
 
 interface AuditDoc {
   id: string;
@@ -26,11 +27,16 @@ interface AuditDoc {
   fileType: "PDF" | "DOCX" | "Scan";
   dateText: string;
   isLive?: boolean;
+  /** Total flagged by the audit engine; undefined until the bill is analyzed. */
+  flaggedAmount?: number;
   tags: {
     label: string;
     variant: "rose" | "emerald" | "slate" | "blue" | "teal";
   }[];
 }
+
+/** Demo figure shown until the signed-in user has analyzed a real bill. */
+const SAMPLE_PROTECTION_TOTAL = 48750;
 
 const sampleAuditDocuments: AuditDoc[] = [
   {
@@ -143,6 +149,37 @@ export default function DocumentArchivePage() {
               ? raw.page_count
               : Math.max(1, files.length);
 
+          const audit = (row.audit_results ?? null) as Partial<AuditEngineResult> | null;
+          const auditItems = Array.isArray(audit?.line_items) ? audit.line_items : [];
+          const isAnalyzed = auditItems.length > 0;
+          const flagged =
+            Number(audit?.disputed_overcharge_total ?? 0) +
+            Number(audit?.senior_pwd_savings ?? 0);
+          const reviewCount = auditItems.filter(
+            (item) => item.status === "review_worthy"
+          ).length;
+
+          const tags: AuditDoc["tags"] = isAnalyzed
+            ? [
+                flagged > 0
+                  ? { label: `• ${formatPHP(flagged)} flagged`, variant: "rose" }
+                  : { label: "✓ No overcharges flagged", variant: "emerald" },
+                {
+                  label:
+                    reviewCount > 0
+                      ? `${reviewCount} ${reviewCount === 1 ? "item" : "items"} to review`
+                      : `${auditItems.length} items checked`,
+                  variant: "slate",
+                },
+              ]
+            : [
+                { label: "Awaiting AI analysis", variant: "blue" },
+                {
+                  label: `${pageCount} ${pageCount === 1 ? "Page" : "Pages"} • Encrypted`,
+                  variant: "emerald",
+                },
+              ];
+
           return {
             id: row.id,
             facility: row.hospital_name || "Draft Hospital Statement",
@@ -156,16 +193,8 @@ export default function DocumentArchivePage() {
               year: "numeric",
             }),
             isLive: true,
-            tags: [
-              {
-                label: "Staged for Week 3 AI OCR",
-                variant: "blue",
-              },
-              {
-                label: `${pageCount} ${pageCount === 1 ? "Page" : "Pages"} • Encrypted`,
-                variant: "emerald",
-              },
-            ],
+            flaggedAmount: isAnalyzed ? flagged : undefined,
+            tags,
           };
         });
 
@@ -187,6 +216,12 @@ export default function DocumentArchivePage() {
     doc.facility.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const analyzedDocs = liveDocs.filter((doc) => doc.flaggedAmount !== undefined);
+  const hasLiveTotal = analyzedDocs.length > 0;
+  const protectionTotal = hasLiveTotal
+    ? analyzedDocs.reduce((sum, doc) => sum + (doc.flaggedAmount ?? 0), 0)
+    : SAMPLE_PROTECTION_TOTAL;
+
   return (
     <div className="space-y-4 sm:space-y-6 max-w-3xl mx-auto animate-in fade-in duration-300">
       {/* Top 3 Mode Selector */}
@@ -203,9 +238,10 @@ export default function DocumentArchivePage() {
               Audit Protection Total
             </span>
             <span className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              ₱48,750{" "}
+              {formatPHP(protectionTotal)}{" "}
               <span className="text-xs sm:text-sm font-normal text-blue-100">
                 identified overcharges
+                {!hasLiveTotal && " (sample)"}
               </span>
             </span>
           </div>
@@ -268,88 +304,102 @@ export default function DocumentArchivePage() {
 
       {/* Document Items List */}
       <div className="space-y-3">
-        {filteredDocs.map((doc) => (
-          <Card
-            key={doc.id}
-            className={cn(
-              "hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group",
-              doc.isLive && "border-blue-200/90 ring-1 ring-blue-500/10"
-            )}
-          >
-            <CardContent className="p-4 flex items-center justify-between gap-3">
-              <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                {/* File Format Badge */}
-                <div
-                  className={cn(
-                    "w-11 h-11 rounded-2xl flex flex-col items-center justify-center shrink-0 font-bold text-[10px] border",
-                    doc.fileType === "PDF" &&
-                      "bg-rose-50 text-rose-600 border-rose-200/80",
-                    doc.fileType === "DOCX" &&
-                      "bg-blue-50 text-blue-600 border-blue-200/80",
-                    doc.fileType === "Scan" &&
-                      "bg-slate-100 text-slate-700 border-slate-200"
-                  )}
-                >
-                  {doc.fileType === "Scan" ? (
-                    <Camera className="w-5 h-5 text-blue-600" />
-                  ) : (
-                    <span>{doc.fileType}</span>
-                  )}
-                </div>
-
-                {/* Details */}
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <h4 className="font-bold text-sm text-slate-900 truncate group-hover:text-blue-600 transition-colors">
-                        {doc.facility}
-                      </h4>
-                      {doc.isLive && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white shrink-0">
-                          <Sparkles className="w-2.5 h-2.5" />
-                          <span>LIVE</span>
-                        </span>
-                      )}
-                    </div>
-                    <span className="font-extrabold text-sm text-slate-900 shrink-0">
-                      {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
-                    </span>
+        {filteredDocs.map((doc) => {
+          const card = (
+            <Card
+              className={cn(
+                "hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group",
+                doc.isLive && "border-blue-200/90 ring-1 ring-blue-500/10"
+              )}
+            >
+              <CardContent className="p-4 flex items-center justify-between gap-3">
+                <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                  {/* File Format Badge */}
+                  <div
+                    className={cn(
+                      "w-11 h-11 rounded-2xl flex flex-col items-center justify-center shrink-0 font-bold text-[10px] border",
+                      doc.fileType === "PDF" &&
+                        "bg-rose-50 text-rose-600 border-rose-200/80",
+                      doc.fileType === "DOCX" &&
+                        "bg-blue-50 text-blue-600 border-blue-200/80",
+                      doc.fileType === "Scan" &&
+                        "bg-slate-100 text-slate-700 border-slate-200"
+                    )}
+                  >
+                    {doc.fileType === "Scan" ? (
+                      <Camera className="w-5 h-5 text-blue-600" />
+                    ) : (
+                      <span>{doc.fileType}</span>
+                    )}
                   </div>
 
-                  <p className="text-xs text-slate-600 font-medium">
-                    {doc.fileSize} • {doc.fileType} • {doc.dateText}
-                  </p>
-
-                  {/* Chips */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                    {doc.tags.map((tag, i) => (
-                      <span
-                        key={i}
-                        className={cn(
-                          "px-2.5 py-0.5 rounded-full text-[10px] font-semibold border",
-                          tag.variant === "rose" &&
-                            "bg-rose-50 text-rose-700 border-rose-200",
-                          tag.variant === "emerald" &&
-                            "bg-emerald-50 text-emerald-700 border-emerald-200",
-                          tag.variant === "slate" &&
-                            "bg-slate-100 text-slate-600 border-slate-200",
-                          tag.variant === "blue" &&
-                            "bg-blue-50 text-blue-700 border-blue-200",
-                          tag.variant === "teal" &&
-                            "bg-teal-50 text-teal-800 border-teal-200"
+                  {/* Details */}
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <h4 className="font-bold text-sm text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                          {doc.facility}
+                        </h4>
+                        {doc.isLive && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white shrink-0">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            <span>LIVE</span>
+                          </span>
                         )}
-                      >
-                        {tag.label}
+                      </div>
+                      <span className="font-extrabold text-sm text-slate-900 shrink-0">
+                        {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
                       </span>
-                    ))}
+                    </div>
+
+                    <p className="text-xs text-slate-600 font-medium">
+                      {doc.fileSize} • {doc.fileType} • {doc.dateText}
+                    </p>
+
+                    {/* Chips */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {doc.tags.map((tag, i) => (
+                        <span
+                          key={i}
+                          className={cn(
+                            "px-2.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                            tag.variant === "rose" &&
+                              "bg-rose-50 text-rose-700 border-rose-200",
+                            tag.variant === "emerald" &&
+                              "bg-emerald-50 text-emerald-700 border-emerald-200",
+                            tag.variant === "slate" &&
+                              "bg-slate-100 text-slate-600 border-slate-200",
+                            tag.variant === "blue" &&
+                              "bg-blue-50 text-blue-700 border-blue-200",
+                            tag.variant === "teal" &&
+                              "bg-teal-50 text-teal-800 border-teal-200"
+                          )}
+                        >
+                          {tag.label}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
-            </CardContent>
-          </Card>
-        ))}
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </CardContent>
+            </Card>
+          );
+
+          // Only real audits open in the Audit Studio; sample rows are demo data.
+          return doc.isLive ? (
+            <Link
+              key={doc.id}
+              href={`/audits/${doc.id}`}
+              className="block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+            >
+              {card}
+            </Link>
+          ) : (
+            <React.Fragment key={doc.id}>{card}</React.Fragment>
+          );
+        })}
       </div>
 
       {/* DPA 2012 Regulatory Compliance Footer */}

@@ -27,6 +27,7 @@ import type {
   ScannedPage,
   PipelineStage,
   StagedFileMeta,
+  AuditEngineResult,
 } from "@/types/audit";
 
 export default function ScannerPage() {
@@ -43,13 +44,19 @@ export default function ScannerPage() {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [stagedAuditId, setStagedAuditId] = useState<string | null>(null);
+  const [isSeniorOrPwd, setIsSeniorOrPwd] = useState<boolean>(false);
+  const [isAnalyzingOcr, setIsAnalyzingOcr] = useState<boolean>(false);
+  const [ocrAuditResult, setOcrAuditResult] = useState<AuditEngineResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const replaceInputRef = useRef<HTMLInputElement | null>(null);
 
   const pagesRef = useRef<ScannedPage[]>([]);
-  pagesRef.current = pages;
+
+  useEffect(() => {
+    pagesRef.current = pages;
+  }, [pages]);
 
   useEffect(() => {
     return () => {
@@ -68,6 +75,7 @@ export default function ScannerPage() {
 
       setErrorMessage(null);
       setStagedAuditId(null);
+      setOcrAuditResult(null);
 
       const invalidFile = incomingFiles.find((f) => !isSupportedBillFile(f));
       if (invalidFile) {
@@ -162,6 +170,7 @@ export default function ScannerPage() {
     });
     setErrorMessage(null);
     setStagedAuditId(null);
+    setOcrAuditResult(null);
   };
 
   const handleResetAll = () => {
@@ -178,6 +187,7 @@ export default function ScannerPage() {
     setUploadProgress(0);
     setErrorMessage(null);
     setStagedAuditId(null);
+    setOcrAuditResult(null);
   };
 
   const handleUploadAndStage = async () => {
@@ -192,8 +202,24 @@ export default function ScannerPage() {
       const supabase = createClient();
 
       const {
-        data: { session },
+        data: { session: initialSession },
       } = await supabase.auth.getSession();
+
+      let session = initialSession;
+      const localNowSec = Math.floor(Date.now() / 1000);
+      const sessionMeta = session as unknown as Record<string, unknown> | null;
+      const needsTokenRefresh =
+        !session ||
+        typeof sessionMeta?.rebased_at !== "number" ||
+        (typeof session.expires_at === "number" &&
+          session.expires_at - localNowSec < 300);
+
+      if (needsTokenRefresh) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        if (refreshed.session) {
+          session = refreshed.session;
+        }
+      }
 
       let user = session?.user ?? null;
       if (!user) {
@@ -235,13 +261,30 @@ export default function ScannerPage() {
         );
         setUploadProgress(Math.round(20 + ((i + 0.5) / pages.length) * 55));
 
-        const { error: uploadError } = await supabase.storage
+        let { error: uploadError } = await supabase.storage
           .from("bill-uploads")
           .upload(storagePath, page.result.file, {
             cacheControl: "3600",
             upsert: false,
             contentType: page.result.mimeType,
           });
+
+        // If the server rejected the JWT due to an expired `exp` claim, refresh
+        // the session once and retry the upload transparently.
+        if (
+          uploadError &&
+          /exp|jwt|token|timestamp|expired/i.test(uploadError.message)
+        ) {
+          await supabase.auth.refreshSession();
+          const retryRes = await supabase.storage
+            .from("bill-uploads")
+            .upload(storagePath, page.result.file, {
+              cacheControl: "3600",
+              upsert: true,
+              contentType: page.result.mimeType,
+            });
+          uploadError = retryRes.error;
+        }
 
         if (uploadError) {
           throw new Error(
@@ -319,7 +362,59 @@ export default function ScannerPage() {
   const isBusy =
     stage === "compressing" ||
     stage === "uploading" ||
-    stage === "staging_db";
+    stage === "staging_db" ||
+    isAnalyzingOcr;
+
+  const handleRunAIOcr = async () => {
+    if (!stagedAuditId && pages.length === 0) return;
+
+    setErrorMessage(null);
+    setIsAnalyzingOcr(true);
+    setStatusMessage("Extracting line items and auditing with Gemini Flash...");
+
+    try {
+      let payload: Record<string, unknown> = {
+        isSeniorOrPwd,
+      };
+
+      if (stagedAuditId) {
+        payload.auditId = stagedAuditId;
+      } else if (pages[0]?.result?.file) {
+        const file = pages[0].result.file;
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        bytes.forEach((b) => {
+          binary += String.fromCharCode(b);
+        });
+        const base64 = btoa(binary);
+        payload = {
+          ...payload,
+          imageBase64: base64,
+          mimeType: file.type || "image/jpeg",
+        };
+      }
+
+      const res = await fetch("/api/audit/ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "OCR extraction failed.");
+      }
+
+      setOcrAuditResult(data.audit);
+      setStatusMessage("AI PhilHealth Audit Complete!");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to analyze bill with AI.";
+      setErrorMessage(msg);
+    } finally {
+      setIsAnalyzingOcr(false);
+    }
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-3xl mx-auto animate-in fade-in duration-300">
@@ -427,6 +522,11 @@ export default function ScannerPage() {
         stagedAuditId={stagedAuditId}
         onUploadAndStage={handleUploadAndStage}
         onResetAll={handleResetAll}
+        isSeniorOrPwd={isSeniorOrPwd}
+        setIsSeniorOrPwd={setIsSeniorOrPwd}
+        onRunAIOcr={handleRunAIOcr}
+        isAnalyzingOcr={isAnalyzingOcr}
+        ocrAuditResult={ocrAuditResult}
       />
 
       {/* Action Buttons Row */}

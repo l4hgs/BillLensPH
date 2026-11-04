@@ -2,8 +2,8 @@
  * Clock-Skew Tolerant Fetch & Cookie Normalizer for Supabase Auth
  *
  * Why this is needed:
- * If the local machine's system clock is ahead of real-world UTC time (e.g., set to Oct 2026
- * while Supabase's cloud servers are in April 2026), Supabase Auth responses return an
+ * If the local machine's system clock is ahead of real-world UTC time (e.g., set to Nov 2026
+ * while Supabase's cloud servers are in the real current year), Supabase Auth responses return an
  * `expires_at` Unix timestamp anchored to the server's clock.
  *
  * `@supabase/auth-js` compares `session.expires_at * 1000` against local `Date.now()`.
@@ -11,13 +11,14 @@
  * a brand-new 1-second-old token as expired, triggers concurrent refresh token collisions
  * between middleware and browser clients, and calls `_removeSession()` — logging the user out!
  *
- * This wrapper normalizes `expires_at` in Supabase Auth responses to `Math.floor(Date.now() / 1000) + expires_in`
- * so client/SSR expiry checks always measure elapsed time relative to the local clock, while
- * leaving the signed `access_token` JWT completely untouched for Supabase server verification.
+ * This wrapper normalizes `expires_at` in fresh `/auth/v1/` token responses to
+ * `Math.floor(Date.now() / 1000) + expires_in` and stamps `rebased_at` so client/SSR expiry
+ * checks measure elapsed time relative to the local clock when the token was issued,
+ * while ensuring expired tokens are genuinely refreshed via `refresh_token` rather than
+ * having their `expires_at` artificially extended.
  */
 
 const ONE_HOUR_SECONDS = 3600;
-const CLOCK_SKEW_THRESHOLD_SECONDS = 7200; // 2 hours difference indicates clock skew
 const MAX_CHUNK_SIZE = 3180;
 
 function normalizeSessionObject(obj: Record<string, unknown>): boolean {
@@ -31,12 +32,16 @@ function normalizeSessionObject(obj: Record<string, unknown>): boolean {
     const localNowSec = Math.floor(Date.now() / 1000);
     const expectedLocalExpiresAt = localNowSec + obj.expires_in;
 
-    // Always anchor fresh token responses to local clock + expires_in
+    // Anchor fresh token responses from `/auth/v1/` to local clock + expires_in
+    // and stamp `rebased_at` so cookie readers know this token was already rebased
+    // at issuance time and must never be artificially extended once it expires.
     if (
       typeof obj.expires_at !== "number" ||
-      Math.abs(expectedLocalExpiresAt - obj.expires_at) > 60
+      Math.abs(expectedLocalExpiresAt - obj.expires_at) > 60 ||
+      typeof obj.rebased_at !== "number"
     ) {
       obj.expires_at = expectedLocalExpiresAt;
+      obj.rebased_at = localNowSec;
       modified = true;
     }
   }
@@ -132,8 +137,14 @@ function encodeBase64UrlUtf8(str: string): string {
 }
 
 /**
- * Normalizes an array of `{ name, value }` cookies (used in server.ts and middleware.ts)
- * so any skewed `expires_at` in `sb-*-auth-token` cookies is rebased to the local clock.
+ * Inspects an array of `{ name, value }` cookies (used in server.ts, middleware.ts, and client.ts).
+ *
+ * - If a cookie already has `rebased_at` (stamped by `clockSkewSafeFetch` when issued),
+ *   its `expires_at` is already anchored to the local clock and is left untouched so
+ *   `@supabase/auth-js` naturally refreshes it after `expires_in` seconds.
+ * - If a legacy cookie lacks `rebased_at` (e.g., from an earlier session whose `expires_at`
+ *   was bumped without refreshing the underlying JWT), marks `expires_at` as expired (`localNowSec - 60`)
+ *   so `@supabase/auth-js` immediately exchanges `refresh_token` for a fresh JWT.
  */
 export function repairSkewedCookieArray(
   cookies: { name: string; value: string }[]
@@ -174,15 +185,11 @@ export function repairSkewedCookieArray(
       const jsonStr = decodeBase64UrlUtf8(combined.slice("base64-".length));
       const parsed = JSON.parse(jsonStr) as Record<string, unknown>;
 
-      if (
-        typeof parsed.expires_at === "number" &&
-        localNowSec - parsed.expires_at > CLOCK_SKEW_THRESHOLD_SECONDS
-      ) {
-        const expiresIn =
-          typeof parsed.expires_in === "number" && parsed.expires_in > 0
-            ? parsed.expires_in
-            : ONE_HOUR_SECONDS;
-        parsed.expires_at = localNowSec + expiresIn;
+      // Only repair cookies that lack `rebased_at`. Never extend an already-rebased
+      // cookie into the future, or `@supabase/auth-js` will skip refreshing expired JWTs!
+      if (typeof parsed.rebased_at !== "number") {
+        parsed.expires_at = localNowSec - 60;
+        parsed.rebased_at = localNowSec - ONE_HOUR_SECONDS;
 
         const updatedEncoded =
           "base64-" + encodeBase64UrlUtf8(JSON.stringify(parsed));
@@ -211,12 +218,13 @@ export function repairSkewedCookieArray(
 }
 
 /**
- * Repairs an existing base64url-encoded Supabase auth cookie in `document.cookie`
- * (both single and chunked `.0`, `.1` cookies) if its `expires_at` is skewed into the past.
+ * Repairs any legacy base64url-encoded Supabase auth cookie in `document.cookie`
+ * that lacks `rebased_at`. Returns `true` if any cookie was updated.
  */
-export function repairSkewedBrowserAuthCookies(): void {
-  if (typeof document === "undefined" || !document.cookie) return;
+export function repairSkewedBrowserAuthCookies(): boolean {
+  if (typeof document === "undefined" || !document.cookie) return false;
 
+  let anyUpdated = false;
   try {
     const rawEntries = document.cookie.split("; ");
     const inputCookies: { name: string; value: string }[] = [];
@@ -237,10 +245,12 @@ export function repairSkewedBrowserAuthCookies(): void {
         document.cookie = `${name}=${value}; path=/; max-age=${
           60 * 60 * 24 * 400
         }; SameSite=Lax`;
+        anyUpdated = true;
       }
     }
   } catch {
     // Ignore malformed cookies
   }
-}
 
+  return anyUpdated;
+}
