@@ -494,7 +494,7 @@ export default function ScannerPage() {
               {errorMessage.toLowerCase().includes("signed in") && (
                 <Link
                   href="/auth?next=/scanner"
-                  className="inline-flex items-center gap-1 mt-2 font-bold text-blue-600 hover:underline"
+                  className="inline-flex items-center gap-1 mt-2 font-bold text-[#2563EB] hover:underline"
                 >
                   <span>Go to Sign In</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -535,7 +535,7 @@ export default function ScannerPage() {
           type="button"
           disabled={isBusy}
           onClick={() => cameraInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-blue-600 text-white text-xs font-semibold shadow-soft hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-[#2563EB] text-white text-xs font-bold shadow-soft hover:bg-[#1D4ED8] transition-colors cursor-pointer disabled:opacity-50"
         >
           <Camera className="w-4 h-4" />
           <span>Take Photo</span>
@@ -545,47 +545,47 @@ export default function ScannerPage() {
           type="button"
           disabled={isBusy}
           onClick={() => fileInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-white border border-slate-200/90 text-slate-700 text-xs font-semibold shadow-soft hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs font-bold shadow-soft hover:bg-[#F3F4F6] transition-colors cursor-pointer disabled:opacity-50"
         >
-          <ImageIcon className="w-4 h-4 text-blue-600" />
+          <ImageIcon className="w-4 h-4 text-[#2563EB]" />
           <span>Upload Photo / PDF</span>
         </button>
 
         <Link href="/rates" className="col-span-2 sm:col-span-1">
-          <div className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-white border border-slate-200/90 text-slate-700 text-xs font-semibold shadow-soft hover:bg-slate-50 transition-colors">
-            <SlidersHorizontal className="w-4 h-4 text-slate-600" />
+          <div className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs font-bold shadow-soft hover:bg-[#F3F4F6] transition-colors">
+            <SlidersHorizontal className="w-4 h-4 text-[#64748B]" />
             <span>Auto 2024 ACR</span>
           </div>
         </Link>
       </div>
 
       {/* PhilHealth Rate Audit Status Card */}
-      <Card className="hover:border-blue-300 transition-all cursor-pointer bg-white">
+      <Card className="hover:border-[#2563EB] transition-all cursor-pointer bg-white border-[#CBD5E1]">
         <Link href="/rates">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] shrink-0">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm sm:text-base text-slate-900">
+                  <h4 className="font-bold text-sm sm:text-base text-[#1E293B]">
                     PhilHealth Rate Audit
                   </h4>
                   <Badge
                     variant="primary"
-                    className="text-[10px] py-0 px-2 bg-blue-100 text-blue-700 border-blue-200"
+                    className="text-[10px] py-0 px-2 bg-blue-50 text-[#2563EB] border-blue-200 font-bold"
                   >
                     Active
                   </Badge>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[200px] sm:max-w-md">
+                <p className="text-xs text-[#64748B] mt-0.5 truncate max-w-[200px] sm:max-w-md">
                   Detect overcharges and unapplied case rate bundles
                 </p>
               </div>
             </div>
 
-            <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
+            <div className="w-9 h-9 rounded-full bg-[#2563EB] text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
               <ArrowRight className="w-4 h-4" />
             </div>
           </CardContent>
@@ -594,29 +594,29 @@ export default function ScannerPage() {
 
       {/* 2-Column Info Grid */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
-        <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-white border border-slate-100 shadow-soft flex items-center gap-3">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1] shadow-soft flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-[10px] uppercase font-bold text-slate-600 block">
+            <span className="text-[10px] uppercase font-bold text-[#64748B] block">
               Case Rate DB
             </span>
-            <span className="font-bold text-xs sm:text-sm text-slate-800">
+            <span className="font-extrabold text-xs sm:text-sm text-[#1E293B]">
               All-Case Rates v3
             </span>
           </div>
         </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-white border border-slate-100 shadow-soft flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1] shadow-soft flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0">
             <Accessibility className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-[10px] uppercase font-bold text-slate-600 block">
+            <span className="text-[10px] uppercase font-bold text-[#64748B] block">
               Statutory VAT
             </span>
-            <span className="font-bold text-xs sm:text-sm text-slate-800">
+            <span className="font-extrabold text-xs sm:text-sm text-[#1E293B]">
               Auto 20% + VAT Zero
             </span>
           </div>

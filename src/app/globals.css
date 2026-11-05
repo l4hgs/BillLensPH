@@ -2,16 +2,19 @@
 
 @layer base {
   :root {
-    --background: #F8FAFC;
-    --foreground: #0F172A;
-    --primary: #2563EB;
+    /* BillLens PH Design System Swatches */
+    --background: #F3F4F6;         /* Light Canvas */
+    --border: #CBD5E1;             /* Card stroke & dividers */
+    --muted: #64748B;              /* Secondary / Muted labels */
+    --foreground: #1E293B;         /* Charcoal Navy / Primary text */
+    --primary: #2563EB;            /* Vibrant Blue / Brand accent */
     --primary-hover: #1D4ED8;
     --primary-light: #EFF6FF;
+    --brand-red: #DC2626;          /* Logo "PH" Accent Red */
+
     --card: #FFFFFF;
-    --card-foreground: #0F172A;
-    --border: #E2E8F0;
-    --muted: #64748B;
-    --muted-bg: #F1F5F9;
+    --card-foreground: #1E293B;
+    --muted-bg: #E2E8F0;
 
     /* Traffic-Light System */
     --status-covered: #10B981;
@@ -43,17 +46,17 @@ body {
   padding-top: env(safe-area-inset-top, 16px);
 }
 
-/* Custom Soft Shadows */
+/* Custom Soft Shadows matching modern rounded UI */
 .shadow-soft {
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+  box-shadow: 0 4px 20px -2px rgba(30, 41, 59, 0.05), 0 2px 6px -1px rgba(30, 41, 59, 0.02);
 }
 
 .shadow-card-hover {
-  box-shadow: 0 10px 25px -3px rgba(37, 99, 235, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.02);
+  box-shadow: 0 12px 28px -4px rgba(37, 99, 235, 0.12), 0 4px 8px -2px rgba(30, 41, 59, 0.04);
 }
 
 .shadow-glow {
-  box-shadow: 0 0 24px -2px rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 24px -2px rgba(37, 99, 235, 0.45);
 }
 
 /* Desktop vs Mobile display helpers */

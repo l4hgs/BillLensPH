@@ -56,18 +56,18 @@ export function ModeSelector() {
             key={mode.id}
             href={mode.href}
             className={cn(
-              "flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl sm:rounded-3xl border transition-all duration-200 text-center relative",
+              "flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl border transition-all duration-200 text-center relative",
               isActive
-                ? "bg-blue-50/60 border-blue-200 text-blue-700 shadow-xs"
-                : "bg-white border-slate-100 text-slate-600 hover:border-slate-200 hover:bg-slate-50/50 shadow-soft"
+                ? "bg-white border-[#2563EB] text-[#2563EB] shadow-xs"
+                : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-slate-400 hover:bg-[#F3F4F6] shadow-soft"
             )}
           >
             <div
               className={cn(
                 "w-10 h-10 rounded-full flex items-center justify-center mb-1.5 transition-colors",
                 isActive
-                  ? "bg-blue-100 text-blue-600"
-                  : "bg-slate-100/80 text-slate-500"
+                  ? "bg-blue-50 text-[#2563EB]"
+                  : "bg-[#F3F4F6] text-[#64748B]"
               )}
             >
               <Icon className="w-5 h-5" />
@@ -76,19 +76,19 @@ export function ModeSelector() {
             <span
               className={cn(
                 "font-bold text-xs tracking-tight",
-                isActive ? "text-blue-700" : "text-slate-800"
+                isActive ? "text-[#2563EB]" : "text-[#1E293B]"
               )}
             >
               {mode.label}
             </span>
 
-            <span className="text-[10px] text-slate-600 mt-0.5">
+            <span className="text-[10px] text-[#64748B] mt-0.5 font-medium">
               {mode.sub}
             </span>
 
             {/* Active indicator dot */}
             {isActive && (
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-1.5" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] mt-1.5" />
             )}
           </Link>
         );

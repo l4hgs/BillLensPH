@@ -89,11 +89,11 @@ export function ScannerViewfinder({
       onDrop={onDrop}
       className={`overflow-hidden border transition-all duration-200 shadow-soft bg-white ${
         isDragging
-          ? "border-blue-500 ring-4 ring-blue-500/15 bg-blue-50/20"
-          : "border-slate-100"
+          ? "border-[#2563EB] bg-blue-50/20"
+          : "border-[#CBD5E1]"
       }`}
     >
-      <div className="p-5 sm:p-7 flex flex-col items-center bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]">
+      <div className="p-5 sm:p-7 flex flex-col items-center bg-[#F3F4F6]/50">
         {/* Top Bar inside Viewfinder */}
         <div className="w-full flex items-center justify-between mb-4">
           {stage === "completed" ? (
@@ -102,8 +102,8 @@ export function ScannerViewfinder({
               <span>STAGED FOR AI OCR</span>
             </div>
           ) : isBusy ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-bold">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#2563EB] text-[11px] font-bold">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2563EB]" />
               <span>
                 {stage === "compressing"
                   ? "COMPRESSING IMAGE..."
@@ -113,8 +113,8 @@ export function ScannerViewfinder({
               </span>
             </div>
           ) : activePage ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-bold">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#2563EB] text-[11px] font-bold">
+              <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
               <span>
                 PAGE {activePageIndex + 1} OF {pages.length} LOCKED
               </span>
@@ -132,8 +132,8 @@ export function ScannerViewfinder({
               onClick={() => setIsFlashOn(!isFlashOn)}
               className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
                 isFlashOn
-                  ? "bg-amber-100 border-amber-300 text-amber-700"
-                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  ? "bg-amber-100 border-amber-300 text-amber-800"
+                  : "bg-white border-[#CBD5E1] text-[#64748B] hover:bg-[#F3F4F6]"
               }`}
               aria-label="Toggle Flash"
             >
@@ -145,8 +145,8 @@ export function ScannerViewfinder({
               onClick={() => setShowGrid(!showGrid)}
               className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
                 showGrid
-                  ? "bg-blue-50 border-blue-200 text-blue-600"
-                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  ? "bg-blue-50 border-blue-300 text-[#2563EB]"
+                  : "bg-white border-[#CBD5E1] text-[#64748B] hover:bg-[#F3F4F6]"
               }`}
               aria-label="Toggle Grid"
             >
@@ -162,15 +162,10 @@ export function ScannerViewfinder({
               onBrowseFiles();
             }
           }}
-          className={`relative w-full max-w-xs sm:max-w-sm h-72 sm:h-84 my-3 flex items-center justify-center rounded-2xl overflow-hidden transition-all ${
-            !activePage && !isBusy ? "cursor-pointer hover:bg-blue-50/30" : ""
+          className={`relative w-full max-w-xs sm:max-w-sm h-72 sm:h-84 my-3 flex items-center justify-center rounded-2xl border-2 border-[#CBD5E1] bg-white overflow-hidden transition-all ${
+            !activePage && !isBusy ? "cursor-pointer hover:border-[#2563EB] hover:bg-blue-50/20" : ""
           }`}
         >
-          {/* Viewfinder Corner Brackets */}
-          <div className="absolute top-0 left-0 w-12 h-12 border-t-[3.5px] border-l-[3.5px] border-blue-600 rounded-tl-2xl z-20 pointer-events-none" />
-          <div className="absolute top-0 right-0 w-12 h-12 border-t-[3.5px] border-r-[3.5px] border-blue-600 rounded-tr-2xl z-20 pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-12 h-12 border-b-[3.5px] border-l-[3.5px] border-blue-600 rounded-bl-2xl z-20 pointer-events-none" />
-          <div className="absolute bottom-0 right-0 w-12 h-12 border-b-[3.5px] border-r-[3.5px] border-blue-600 rounded-br-2xl z-20 pointer-events-none" />
 
           {/* Optional 3x3 Alignment Grid Overlay */}
           {showGrid && (
@@ -181,8 +176,8 @@ export function ScannerViewfinder({
               <div className="border-r border-b border-blue-400" />
               <div className="border-r border-b border-blue-400" />
               <div className="border-b border-blue-400" />
-              <div className="border-r border-blue-400" />
-              <div className="border-r border-blue-400" />
+              <div className="border-r border-b border-blue-400" />
+              <div className="border-r border-b border-blue-400" />
               <div />
             </div>
           )}
@@ -191,14 +186,14 @@ export function ScannerViewfinder({
           {activePage ? (
             <div className="relative w-full h-full flex flex-col items-center justify-center p-2.5 bg-slate-900/5">
               {activePage.result.mimeType === "application/pdf" ? (
-                <div className="flex flex-col items-center justify-center text-center p-6 bg-white/95 rounded-2xl border border-slate-200 shadow-sm max-w-[240px]">
-                  <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-3">
+                <div className="flex flex-col items-center justify-center text-center p-6 bg-white/95 rounded-2xl border border-[#CBD5E1] shadow-sm max-w-[240px]">
+                  <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 text-[#DC2626] flex items-center justify-center mb-3">
                     <FileText className="w-7 h-7" />
                   </div>
-                  <p className="text-xs font-bold text-slate-900 line-clamp-2 break-all">
+                  <p className="text-xs font-bold text-[#1E293B] line-clamp-2 break-all">
                     {activePage.originalName}
                   </p>
-                  <span className="mt-1 text-[11px] font-medium text-slate-500">
+                  <span className="mt-1 text-[11px] font-medium text-[#64748B]">
                     PDF Statement •{" "}
                     {formatFileSize(activePage.result.compressedSize)}
                   </span>
@@ -213,7 +208,7 @@ export function ScannerViewfinder({
               )}
 
               {/* Compression Badge Overlay inside top of reticle */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-semibold flex items-center gap-1.5 z-20 shadow-sm">
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-full bg-[#1E293B]/90 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1.5 z-20 shadow-sm">
                 {activePage.result.wasCompressed ? (
                   <>
                     <span className="text-slate-300 line-through">
@@ -246,9 +241,9 @@ export function ScannerViewfinder({
                       e.stopPropagation();
                       onRetakeActive();
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 hover:bg-white text-slate-800 border border-slate-200 text-[11px] font-semibold shadow-sm transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 hover:bg-white text-[#1E293B] border border-[#CBD5E1] text-[11px] font-bold shadow-sm transition-all cursor-pointer"
                   >
-                    <RotateCcw className="w-3 h-3 text-blue-600" />
+                    <RotateCcw className="w-3 h-3 text-[#2563EB]" />
                     <span>Retake</span>
                   </button>
                   <button
@@ -257,7 +252,7 @@ export function ScannerViewfinder({
                       e.stopPropagation();
                       onRemovePage(activePageIndex);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 hover:bg-rose-50 text-rose-600 border border-slate-200 text-[11px] font-semibold shadow-sm transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 hover:bg-rose-50 text-[#DC2626] border border-[#CBD5E1] text-[11px] font-bold shadow-sm transition-all cursor-pointer"
                   >
                     <Trash2 className="w-3 h-3" />
                     <span>Remove</span>
@@ -268,30 +263,30 @@ export function ScannerViewfinder({
           ) : (
             /* STATE B: Empty Viewfinder with Laser Line & Dropzone Prompt */
             <>
-              <div className="absolute left-6 right-6 h-[2px] bg-blue-600 shadow-[0_0_24px_4px_rgba(37,99,235,0.7)] animate-pulse z-10 pointer-events-none" />
-              <div className="absolute top-6 bottom-6 w-[1.5px] bg-blue-500/35 pointer-events-none" />
+              <div className="absolute left-6 right-6 h-[2px] bg-[#2563EB] shadow-[0_0_24px_4px_rgba(37,99,235,0.7)] animate-pulse z-10 pointer-events-none" />
+              <div className="absolute top-6 bottom-6 w-[1.5px] bg-[#2563EB]/35 pointer-events-none" />
 
               <div className="flex flex-col items-center justify-center text-center px-6 z-10">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center mb-3 shadow-2xs">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 text-[#2563EB] flex items-center justify-center mb-3 shadow-2xs">
                   <UploadCloud className="w-6 h-6" />
                 </div>
-                <p className="text-xs font-bold text-slate-800">
+                <p className="text-xs font-bold text-[#1E293B]">
                   {isDragging
                     ? "Drop hospital bill here"
                     : "Tap or drag & drop statement here"}
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-[#64748B] mt-0.5">
                   Auto-downscales to 1600px • WebP/JPEG (~300KB)
                 </p>
 
-                <div className="w-40 space-y-2 opacity-20 pointer-events-none mt-4">
-                  <div className="h-2 bg-slate-500 rounded-full w-full" />
-                  <div className="h-1.5 bg-slate-400 rounded-full w-5/6 mx-auto" />
-                  <div className="h-1.5 bg-slate-400 rounded-full w-4/6 mx-auto" />
+                <div className="w-40 space-y-2 opacity-25 pointer-events-none mt-4">
+                  <div className="h-2 bg-[#64748B] rounded-full w-full" />
+                  <div className="h-1.5 bg-[#CBD5E1] rounded-full w-5/6 mx-auto" />
+                  <div className="h-1.5 bg-[#CBD5E1] rounded-full w-4/6 mx-auto" />
                 </div>
               </div>
 
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap px-4 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200 text-xs font-medium text-slate-700 shadow-xs z-20">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap px-4 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-[#CBD5E1] text-xs font-bold text-[#1E293B] shadow-xs z-20">
                 Align Itemized Statement (ISA) within frame
               </div>
             </>
@@ -299,17 +294,17 @@ export function ScannerViewfinder({
 
           {/* Loading / Progress Overlay inside Reticle */}
           {isBusy && (
-            <div className="absolute inset-0 bg-white/85 backdrop-blur-xs z-30 flex flex-col items-center justify-center p-6 text-center">
-              <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 mb-3">
+            <div className="absolute inset-0 bg-white/90 backdrop-blur-xs z-30 flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] mb-3">
                 <Loader2 className="w-6 h-6 animate-spin" />
               </div>
-              <p className="text-xs sm:text-sm font-bold text-slate-900">
+              <p className="text-xs sm:text-sm font-bold text-[#1E293B]">
                 {statusMessage}
               </p>
               {(stage === "uploading" || stage === "staging_db") && (
-                <div className="w-48 h-2 bg-slate-200 rounded-full overflow-hidden mt-3">
+                <div className="w-48 h-2 bg-[#CBD5E1] rounded-full overflow-hidden mt-3">
                   <div
-                    className="h-full bg-blue-600 transition-all duration-300 rounded-full"
+                    className="h-full bg-[#2563EB] transition-all duration-300 rounded-full"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
@@ -320,15 +315,15 @@ export function ScannerViewfinder({
 
         {/* Multi-Page Statement Queue Strip */}
         {pages.length > 0 && (
-          <div className="w-full max-w-sm mt-2 pt-3 border-t border-slate-200/80">
-            <div className="flex items-center justify-between text-[11px] text-slate-600 mb-2">
-              <span className="font-bold text-slate-800">
+          <div className="w-full max-w-sm mt-2 pt-3 border-t border-[#CBD5E1]">
+            <div className="flex items-center justify-between text-[11px] text-[#64748B] mb-2">
+              <span className="font-bold text-[#1E293B]">
                 Statement Pages ({pages.length})
               </span>
               <span>
                 Total: {formatFileSize(totalCompressedBytes)}{" "}
                 {overallSavingsPercent > 0 && (
-                  <span className="text-emerald-600 font-semibold">
+                  <span className="text-emerald-600 font-bold">
                     (Saved {overallSavingsPercent}%)
                   </span>
                 )}
@@ -343,10 +338,10 @@ export function ScannerViewfinder({
                     key={p.id}
                     type="button"
                     onClick={() => setActivePageIndex(idx)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
                       isSelected
-                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                        ? "bg-[#2563EB] text-white border-[#2563EB] shadow-xs"
+                        : "bg-white text-[#1E293B] border-[#CBD5E1] hover:bg-[#F3F4F6]"
                     }`}
                   >
                     <span>Page {idx + 1}</span>
@@ -358,7 +353,7 @@ export function ScannerViewfinder({
                 <button
                   type="button"
                   onClick={onBrowseFiles}
-                  className="px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-blue-300 text-blue-600 bg-blue-50/50 hover:bg-blue-50 transition-all shrink-0 cursor-pointer inline-flex items-center gap-1"
+                  className="px-3.5 py-1.5 rounded-full text-xs font-bold border border-dashed border-[#2563EB] text-[#2563EB] bg-blue-50/50 hover:bg-blue-100/60 transition-all shrink-0 cursor-pointer inline-flex items-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Page</span>
@@ -369,11 +364,10 @@ export function ScannerViewfinder({
         )}
 
         {/* Supported Forms note */}
-        <p className="text-xs text-slate-600 text-center mt-2">
+        <p className="text-xs text-[#64748B] text-center mt-2 font-medium">
           Supports DOH standard billing, PhilHealth CF2 & SOA forms
         </p>
       </div>
     </Card>
   );
 }
-

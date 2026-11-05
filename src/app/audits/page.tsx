@@ -227,29 +227,31 @@ export default function DocumentArchivePage() {
       {/* Top 3 Mode Selector */}
       <ModeSelector />
 
-      {/* Audit Protection Total Blue Banner Card */}
-      <div className="rounded-3xl bg-gradient-to-r from-blue-600 to-blue-700 text-white p-5 shadow-lg shadow-blue-500/20 flex items-center justify-between">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center shrink-0">
-            <Coins className="w-5 h-5 text-white" />
+      {/* Audit Protection Total Solid Banner (Solid Brand Blue #2563EB, No Gradient) */}
+      <div className="rounded-2xl bg-[#2563EB] text-white p-4 sm:p-5 shadow-soft flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-11 h-11 rounded-xl bg-[#1D4ED8] flex items-center justify-center shrink-0 text-white">
+            <Coins className="w-5 h-5" />
           </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 block">
+          <div className="min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-100 block">
               Audit Protection Total
             </span>
-            <span className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              {formatPHP(protectionTotal)}{" "}
-              <span className="text-xs sm:text-sm font-normal text-blue-100">
+            <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2">
+              <span className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                {formatPHP(protectionTotal)}
+              </span>
+              <span className="text-xs sm:text-sm font-medium text-blue-100">
                 identified overcharges
                 {!hasLiveTotal && " (sample)"}
               </span>
-            </span>
+            </div>
           </div>
         </div>
 
         <button
           type="button"
-          className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+          className="w-9 h-9 rounded-full bg-[#1D4ED8] hover:bg-[#1E40AF] flex items-center justify-center text-white transition-colors shrink-0 cursor-pointer"
           aria-label="View protection breakdown"
         >
           <ArrowRight className="w-4 h-4" />
@@ -258,17 +260,17 @@ export default function DocumentArchivePage() {
 
       {/* Search Input Bar */}
       <div className="relative flex items-center">
-        <Search className="w-4 h-4 text-slate-400 absolute left-4" />
+        <Search className="w-4 h-4 text-[#64748B] absolute left-4" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search hospital bills, facility, or case code..."
-          className="w-full bg-white border border-slate-200/90 rounded-full pl-11 pr-11 py-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-soft transition-all"
+          className="w-full bg-white border border-[#CBD5E1] rounded-full pl-11 pr-11 py-3 text-xs sm:text-sm text-[#1E293B] placeholder:text-[#64748B] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] shadow-soft transition-all"
         />
         <button
           type="button"
-          className="absolute right-3.5 text-slate-400 hover:text-slate-600 p-1"
+          className="absolute right-3.5 text-[#64748B] hover:text-[#1E293B] p-1"
           aria-label="Filter"
         >
           <SlidersHorizontal className="w-4 h-4" />
@@ -276,7 +278,7 @@ export default function DocumentArchivePage() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-6 border-b border-slate-200 px-2 text-xs font-semibold overflow-x-auto scrollbar-none">
+      <div className="flex items-center gap-6 border-b border-[#CBD5E1] px-2 text-xs font-bold overflow-x-auto scrollbar-none">
         {(["Today", "This week", "All Documents", "Archive"] as const).map(
           (tab) => {
             const isActive = activeTab === tab;
@@ -286,15 +288,15 @@ export default function DocumentArchivePage() {
                 type="button"
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "pb-2.5 transition-all whitespace-nowrap relative",
+                  "pb-2.5 transition-all whitespace-nowrap relative font-bold",
                   isActive
-                    ? "text-blue-600 font-bold"
-                    : "text-slate-500 hover:text-slate-900"
+                    ? "text-[#2563EB]"
+                    : "text-[#64748B] hover:text-[#1E293B]"
                 )}
               >
                 {tab}
                 {isActive && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2563EB] rounded-full" />
                 )}
               </button>
             );
@@ -308,8 +310,8 @@ export default function DocumentArchivePage() {
           const card = (
             <Card
               className={cn(
-                "hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group",
-                doc.isLive && "border-blue-200/90 ring-1 ring-blue-500/10"
+                "hover:border-[#2563EB] hover:shadow-card-hover transition-all bg-white cursor-pointer group border-[#CBD5E1]",
+                doc.isLive && "border-[#2563EB]"
               )}
             >
               <CardContent className="p-4 flex items-center justify-between gap-3">
@@ -319,15 +321,15 @@ export default function DocumentArchivePage() {
                     className={cn(
                       "w-11 h-11 rounded-2xl flex flex-col items-center justify-center shrink-0 font-bold text-[10px] border",
                       doc.fileType === "PDF" &&
-                        "bg-rose-50 text-rose-600 border-rose-200/80",
+                        "bg-rose-50 text-[#DC2626] border-rose-200",
                       doc.fileType === "DOCX" &&
-                        "bg-blue-50 text-blue-600 border-blue-200/80",
+                        "bg-blue-50 text-[#2563EB] border-blue-200",
                       doc.fileType === "Scan" &&
-                        "bg-slate-100 text-slate-700 border-slate-200"
+                        "bg-[#F3F4F6] text-[#1E293B] border-[#CBD5E1]"
                     )}
                   >
                     {doc.fileType === "Scan" ? (
-                      <Camera className="w-5 h-5 text-blue-600" />
+                      <Camera className="w-5 h-5 text-[#2563EB]" />
                     ) : (
                       <span>{doc.fileType}</span>
                     )}
@@ -337,22 +339,22 @@ export default function DocumentArchivePage() {
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <h4 className="font-bold text-sm text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        <h4 className="font-bold text-sm text-[#1E293B] truncate group-hover:text-[#2563EB] transition-colors">
                           {doc.facility}
                         </h4>
                         {doc.isLive && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white shrink-0">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2563EB] text-white shrink-0">
                             <Sparkles className="w-2.5 h-2.5" />
                             <span>LIVE</span>
                           </span>
                         )}
                       </div>
-                      <span className="font-extrabold text-sm text-slate-900 shrink-0">
+                      <span className="font-black text-sm text-[#1E293B] shrink-0">
                         {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-600 font-medium">
+                    <p className="text-xs text-[#64748B] font-medium">
                       {doc.fileSize} • {doc.fileType} • {doc.dateText}
                     </p>
 
@@ -362,15 +364,15 @@ export default function DocumentArchivePage() {
                         <span
                           key={i}
                           className={cn(
-                            "px-2.5 py-0.5 rounded-full text-[10px] font-semibold border",
+                            "px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
                             tag.variant === "rose" &&
-                              "bg-rose-50 text-rose-700 border-rose-200",
+                              "bg-rose-50 text-[#DC2626] border-rose-200",
                             tag.variant === "emerald" &&
-                              "bg-emerald-50 text-emerald-700 border-emerald-200",
+                              "bg-emerald-50 text-emerald-800 border-emerald-200",
                             tag.variant === "slate" &&
-                              "bg-slate-100 text-slate-600 border-slate-200",
+                              "bg-[#F3F4F6] text-[#64748B] border-[#CBD5E1]",
                             tag.variant === "blue" &&
-                              "bg-blue-50 text-blue-700 border-blue-200",
+                              "bg-blue-50 text-[#2563EB] border-blue-200",
                             tag.variant === "teal" &&
                               "bg-teal-50 text-teal-800 border-teal-200"
                           )}
@@ -382,7 +384,7 @@ export default function DocumentArchivePage() {
                   </div>
                 </div>
 
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+                <ChevronRight className="w-4 h-4 text-[#64748B] group-hover:text-[#2563EB] group-hover:translate-x-0.5 transition-all shrink-0" />
               </CardContent>
             </Card>
           );
@@ -392,7 +394,7 @@ export default function DocumentArchivePage() {
             <Link
               key={doc.id}
               href={`/audits/${doc.id}`}
-              className="block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+              className="block focus:outline-none"
             >
               {card}
             </Link>
@@ -403,8 +405,8 @@ export default function DocumentArchivePage() {
       </div>
 
       {/* DPA 2012 Regulatory Compliance Footer */}
-      <div className="p-3.5 rounded-2xl bg-white border border-slate-100 shadow-xs flex items-center justify-center gap-2 text-[11px] text-slate-500 text-center">
-        <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0" />
+      <div className="p-3.5 rounded-2xl bg-white border border-[#CBD5E1] shadow-xs flex items-center justify-center gap-2 text-[11px] text-[#64748B] text-center font-medium">
+        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
         <span>End-to-End Encrypted Healthcare Storage (DPA 2012 Compliant)</span>
       </div>
     </div>

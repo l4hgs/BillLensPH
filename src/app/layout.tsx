@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-sans bg-slate-50/50 text-slate-900">
+      <body className="min-h-full flex flex-col font-sans bg-[#F3F4F6] text-[#1E293B]">
         <MobileContainer>
           <Header />
           <main className="flex-1 pb-24 md:pb-12 max-w-4xl lg:max-w-5xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-3 sm:py-6">

@@ -238,7 +238,7 @@ export default function AuthPage() {
     return (
       <div className="p-4 flex flex-col gap-4 animate-in fade-in duration-300 max-w-md mx-auto w-full">
         <Card className="overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white text-center">
+          <div className="bg-[#2563EB] p-6 text-white text-center">
             <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md mx-auto flex items-center justify-center text-xl font-bold mb-3 border border-white/30">
               {currentUser.email?.charAt(0).toUpperCase()}
             </div>

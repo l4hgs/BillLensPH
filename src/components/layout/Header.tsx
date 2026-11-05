@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Menu, FileSpreadsheet, HelpCircle, User as UserIcon } from "lucide-react";
+import { Menu, HelpCircle, User as UserIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
@@ -39,15 +40,6 @@ export function Header() {
     };
   }, [pathname]);
 
-  const getPageTitle = () => {
-    if (pathname === "/scanner") return "Scan Hub";
-    if (pathname === "/audits") return "Document Archive";
-    if (pathname === "/rates") return "PhilHealth Case Rates";
-    if (pathname === "/copilot") return "AI Copilot";
-    if (pathname.startsWith("/auth")) return "Account";
-    return "BillLens PH";
-  };
-
   const navLinks = [
     { label: "Home", href: "/" },
     { label: "Scan Hub", href: "/scanner" },
@@ -57,37 +49,42 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 sm:px-6 py-3 transition-all">
-      <div className="max-w-4xl lg:max-w-5xl mx-auto flex items-center justify-between">
-        {/* Left branding / title */}
-        <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 bg-white border-b border-[#CBD5E1] px-3 sm:px-6 py-2 transition-all">
+      <div className="max-w-4xl lg:max-w-5xl mx-auto flex items-center justify-between gap-2">
+        {/* Left branding with Mascot Logo (no gray background, larger size) */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <button
             type="button"
-            className="p-1.5 -ml-1 text-slate-700 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors md:hidden"
+            className="p-1.5 -ml-1 text-[#1E293B] hover:text-[#2563EB] rounded-xl hover:bg-[#F3F4F6] transition-colors md:hidden cursor-pointer"
             aria-label="Navigation menu"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-500/25 group-hover:bg-blue-700 transition-all">
-              <FileSpreadsheet className="w-5 h-5" />
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Image
+                src="/logo.png"
+                alt="BillLens PH Logo"
+                width={48}
+                height={48}
+                className="object-contain w-auto h-full"
+                priority
+              />
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base sm:text-lg tracking-tight text-slate-900">
-                {getPageTitle()}
+            <div className="flex items-baseline gap-1">
+              <span className="font-extrabold text-base sm:text-lg tracking-tight text-[#1E293B]">
+                BillLens
               </span>
-              {pathname === "/" && (
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                  PH
-                </span>
-              )}
+              <span className="font-black text-xs sm:text-sm text-[#DC2626] tracking-wide">
+                PH
+              </span>
             </div>
           </Link>
         </div>
 
         {/* Desktop Navigation Links */}
-        <nav className="desktop-only-nav items-center gap-1 bg-slate-100/70 p-1 rounded-full border border-slate-200/60">
+        <nav className="desktop-only-nav items-center gap-1 bg-[#F3F4F6] p-1 rounded-full border border-[#CBD5E1]">
           {navLinks.map((link) => {
             const isActive =
               link.href === "/"
@@ -98,10 +95,10 @@ export function Header() {
                 key={link.href}
                 href={link.href}
                 className={cn(
-                  "px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all duration-150",
+                  "px-3.5 py-1.5 text-xs font-bold rounded-full transition-all duration-150 whitespace-nowrap",
                   isActive
-                    ? "bg-white text-blue-600 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                    ? "bg-[#2563EB] text-white shadow-xs"
+                    : "text-[#64748B] hover:text-[#1E293B] hover:bg-white/80"
                 )}
               >
                 {link.label}
@@ -111,10 +108,10 @@ export function Header() {
         </nav>
 
         {/* Right action icons */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <Link
             href="/copilot"
-            className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
+            className="w-8 h-8 rounded-full border border-[#CBD5E1] bg-white flex items-center justify-center text-[#64748B] hover:text-[#1E293B] hover:bg-[#F3F4F6] transition-colors"
             title="Help & Guidelines"
           >
             <HelpCircle className="w-4 h-4" />
@@ -123,10 +120,10 @@ export function Header() {
           {user ? (
             <Link
               href="/auth"
-              className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold hover:bg-emerald-100/80 transition-colors"
+              className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs font-bold hover:border-[#2563EB] hover:bg-[#F3F4F6] transition-colors whitespace-nowrap"
               title={user.email || "User profile"}
             >
-              <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold">
+              <span className="w-6 h-6 rounded-full bg-[#2563EB] text-white flex items-center justify-center text-[11px] font-bold shrink-0">
                 {user.email ? user.email.charAt(0).toUpperCase() : "U"}
               </span>
               <span className="hidden sm:inline max-w-[120px] truncate">
@@ -136,7 +133,7 @@ export function Header() {
           ) : (
             <Link
               href="/auth"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-semibold shadow-xs hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#1E293B] text-white text-xs font-bold shadow-xs hover:bg-slate-800 transition-colors whitespace-nowrap"
               title="Sign in"
             >
               <UserIcon className="w-3.5 h-3.5" />

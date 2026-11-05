@@ -300,7 +300,7 @@ export default function RatesPage() {
       <ModeSelector />
 
       {/* Header Info */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 shadow-soft">
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#CBD5E1] shadow-soft">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -330,7 +330,7 @@ export default function RatesPage() {
         </div>
 
         {/* Category Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-4 border-t border-slate-100 mt-4 no-scrollbar">
+        <div className="flex items-center gap-1.5 overflow-x-auto pt-4 border-t border-[#CBD5E1] mt-4 no-scrollbar">
           {categories.map((cat) => (
             <button
               key={cat}
@@ -356,7 +356,7 @@ export default function RatesPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by code, procedure, or supply (e.g. 44970, Appendectomy, contrast media)..."
-          className="w-full bg-white border border-slate-200/90 rounded-full pl-11 pr-4 py-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-soft transition-all"
+          className="w-full bg-white border border-[#CBD5E1] rounded-full pl-11 pr-4 py-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-soft transition-all"
         />
       </div>
 
@@ -373,11 +373,11 @@ export default function RatesPage() {
       {/* Case Package Cards */}
       <div className="space-y-3">
         {loading ? (
-          <div className="p-12 text-center text-xs text-slate-600 bg-white rounded-3xl border border-slate-100">
+          <div className="p-12 text-center text-xs text-slate-600 bg-white rounded-2xl border border-[#CBD5E1]">
             Loading PhilHealth packages...
           </div>
         ) : filtered.length === 0 ? (
-          <div className="p-12 text-center text-xs text-slate-600 bg-white rounded-3xl border border-slate-100 space-y-2">
+          <div className="p-12 text-center text-xs text-slate-600 bg-white rounded-2xl border border-[#CBD5E1] space-y-2">
             <AlertCircle className="w-6 h-6 text-slate-400 mx-auto" />
             <p className="font-semibold text-slate-800">No matching PhilHealth packages found</p>
             <p className="text-slate-600">Try searching for common terms like &ldquo;Gallbladder&rdquo;, &ldquo;NSD&rdquo;, or &ldquo;Dengue&rdquo;.</p>
@@ -391,7 +391,7 @@ export default function RatesPage() {
                 key={pkg.code}
                 onClick={() => toggleExpand(pkg.code)}
                 className={`transition-all bg-white cursor-pointer group border ${
-                  isExpanded ? "border-blue-400 shadow-md ring-1 ring-blue-500/10" : "border-slate-100 hover:border-blue-200 hover:shadow-card-hover"
+                  isExpanded ? "border-blue-400 shadow-md ring-1 ring-blue-500/10" : "border-[#CBD5E1] hover:border-blue-200 hover:shadow-card-hover"
                 }`}
               >
                 <CardContent className="p-4 sm:p-5 space-y-3">
@@ -427,7 +427,7 @@ export default function RatesPage() {
                   )}
 
                   {/* Fee Breakdown Row */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                  <div className="pt-2 border-t border-[#CBD5E1] flex items-center justify-between text-xs text-slate-600">
                     <div className="flex items-center gap-3">
                       <span>
                         Facility (HCI) Fee:{" "}
@@ -492,3 +492,5 @@ export default function RatesPage() {
     </div>
   );
 }
+
+
