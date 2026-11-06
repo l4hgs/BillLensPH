@@ -396,8 +396,10 @@ export function AuditCopilotDrawer({
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs font-bold text-[#1E293B]">
-                        Kumusta! I&apos;ve reviewed your bill from{" "}
-                        {auditResult.hospital_name}.
+                        Kumusta! I’m Billy, your go-to assistant. Feel free to
+                        ask about flagged hospital charges, PhilHealth Case Rate
+                        rules, Senior/PWD discounts, and Malasakit Center
+                        requirements!
                       </p>
                       <p className="text-xs leading-relaxed text-[#64748B]">
                         Ask me about your{" "}
@@ -595,4 +597,3 @@ export function AuditCopilotDrawer({
     </>
   );
 }
-

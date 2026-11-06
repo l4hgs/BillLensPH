@@ -44,7 +44,7 @@ export function BottomNav() {
           </span>
         </Link>
 
-        {/* Insights / Copilot tab */}
+        {/* AI Chatbot tab */}
         <Link
           href="/copilot"
           className={cn(
@@ -55,7 +55,7 @@ export function BottomNav() {
           )}
         >
           <Activity className="w-5 h-5" />
-          <span className="text-[11px] mt-1">Insights</span>
+          <span className="text-[11px] mt-1">AI Chatbot</span>
         </Link>
       </div>
     </nav>

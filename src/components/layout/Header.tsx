@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Menu, User as UserIcon } from "lucide-react";
+import { User as UserIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ export function Header() {
     { label: "Scan Hub", href: "/scanner" },
     { label: "Archive", href: "/audits" },
     { label: "PhilHealth Rates", href: "/rates" },
-    { label: "AI Copilot", href: "/copilot" },
+    { label: "AI Chatbot", href: "/copilot" },
   ];
 
   return (
@@ -53,14 +53,6 @@ export function Header() {
       <div className="max-w-4xl lg:max-w-5xl mx-auto flex items-center justify-between gap-2">
         {/* Left branding with Mascot Logo (no gray background, larger size) */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <button
-            type="button"
-            className="p-1.5 -ml-1 text-[#1E293B] hover:text-[#2563EB] rounded-xl hover:bg-[#F3F4F6] transition-colors md:hidden cursor-pointer"
-            aria-label="Navigation menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
           <Link href="/" className="flex items-center gap-2 group">
             <div className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
               <Image

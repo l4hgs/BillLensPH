@@ -161,7 +161,7 @@ export default function CopilotPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-extrabold tracking-tight text-white">
-                  AI Health &amp; Subsidy Copilot
+                  AI Chatbot: Billy!
                 </h1>
                 <span className="rounded-full bg-[#2563EB] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
                   Live Gemini Flash
@@ -262,7 +262,9 @@ export default function CopilotPage() {
             {messages.length === 0 && (
               <div className="rounded-2xl border border-[#CBD5E1] bg-[#F3F4F6] p-4 text-xs text-[#1E293B]">
                 <p className="font-bold">
-                  Kumusta! How can I help you navigate your hospital bill today?
+                  Kumusta! I’m Billy, your go-to assistant. Feel free to ask
+                  about flagged hospital charges, PhilHealth Case Rate rules,
+                  Senior/PWD discounts, and Malasakit Center requirements!
                 </p>
                 <p className="mt-1 leading-relaxed text-[#64748B]">
                   {selectedAudit?.audit_results
