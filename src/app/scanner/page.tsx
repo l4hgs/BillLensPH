@@ -31,8 +31,6 @@ import type {
 } from "@/types/audit";
 
 export default function ScannerPage() {
-  const [isFlashOn, setIsFlashOn] = useState(false);
-  const [showGrid, setShowGrid] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
 
   const [pages, setPages] = useState<ScannedPage[]>([]);
@@ -50,7 +48,6 @@ export default function ScannerPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
-  const replaceInputRef = useRef<HTMLInputElement | null>(null);
 
   const pagesRef = useRef<ScannedPage[]>([]);
 
@@ -69,7 +66,7 @@ export default function ScannerPage() {
   }, []);
 
   const handleProcessFiles = useCallback(
-    async (fileList: FileList | File[], replaceActive = false) => {
+    async (fileList: FileList | File[]) => {
       const incomingFiles = Array.from(fileList);
       if (incomingFiles.length === 0) return;
 
@@ -105,12 +102,6 @@ export default function ScannerPage() {
         }
 
         setPages((prev) => {
-          if (replaceActive && prev[activePageIndex]) {
-            const copy = [...prev];
-            URL.revokeObjectURL(copy[activePageIndex].result.previewUrl);
-            copy[activePageIndex] = processedPages[0];
-            return copy;
-          }
           const updated = [...prev, ...processedPages];
           setActivePageIndex(updated.length - 1);
           return updated;
@@ -127,7 +118,7 @@ export default function ScannerPage() {
         setErrorMessage(msg);
       }
     },
-    [activePageIndex]
+    []
   );
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -148,7 +139,7 @@ export default function ScannerPage() {
     setIsDragging(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      await handleProcessFiles(e.dataTransfer.files, false);
+      await handleProcessFiles(e.dataTransfer.files);
     }
   };
 
@@ -269,8 +260,6 @@ export default function ScannerPage() {
             contentType: page.result.mimeType,
           });
 
-        // If the server rejected the JWT due to an expired `exp` claim, refresh
-        // the session once and retry the upload transparently.
         if (
           uploadError &&
           /exp|jwt|token|timestamp|expired/i.test(uploadError.message)
@@ -417,7 +406,7 @@ export default function ScannerPage() {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-3xl mx-auto animate-in fade-in duration-300">
+    <div className="max-w-[640px] w-full mx-auto space-y-6 animate-in fade-in duration-300">
       {/* Hidden File Inputs */}
       <input
         ref={cameraInputRef}
@@ -427,7 +416,7 @@ export default function ScannerPage() {
         className="hidden"
         onChange={(e) => {
           if (e.target.files?.length) {
-            handleProcessFiles(e.target.files, false);
+            handleProcessFiles(e.target.files);
             e.target.value = "";
           }
         }}
@@ -440,29 +429,26 @@ export default function ScannerPage() {
         className="hidden"
         onChange={(e) => {
           if (e.target.files?.length) {
-            handleProcessFiles(e.target.files, false);
-            e.target.value = "";
-          }
-        }}
-      />
-      <input
-        ref={replaceInputRef}
-        type="file"
-        accept="image/*,application/pdf"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files?.length) {
-            handleProcessFiles(e.target.files, true);
+            handleProcessFiles(e.target.files);
             e.target.value = "";
           }
         }}
       />
 
-      {/* Top 3 Mode Selectors */}
+      {/* Top 3 Mode Selectors (Grid on desktop, stacked on mobile) */}
       <ModeSelector />
 
-      {/* Main Scanner Viewfinder & Drag-and-Drop Card */}
+      {/* Centered Heading & Muted Subtitle */}
+      <div className="text-center space-y-1.5 pt-1">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1E293B]">
+          Scan Statement
+        </h1>
+        <p className="text-xs sm:text-sm text-[#64748B]">
+          Upload or capture your Itemized Statement (ISA) for auditing.
+        </p>
+      </div>
+
+      {/* Main Upload Card with Dropzone & File Rows */}
       <ScannerViewfinder
         pages={pages}
         activePageIndex={activePageIndex}
@@ -470,16 +456,11 @@ export default function ScannerPage() {
         stage={stage}
         statusMessage={statusMessage}
         uploadProgress={uploadProgress}
-        isFlashOn={isFlashOn}
-        setIsFlashOn={setIsFlashOn}
-        showGrid={showGrid}
-        setShowGrid={setShowGrid}
         isDragging={isDragging}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onBrowseFiles={() => fileInputRef.current?.click()}
-        onRetakeActive={() => replaceInputRef.current?.click()}
         onRemovePage={handleRemovePage}
       />
 
@@ -505,7 +486,7 @@ export default function ScannerPage() {
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="text-rose-500 hover:text-rose-700 font-bold text-xs"
+            className="text-rose-500 hover:text-rose-700 font-bold text-xs cursor-pointer"
           >
             Dismiss
           </button>
@@ -529,13 +510,13 @@ export default function ScannerPage() {
         ocrAuditResult={ocrAuditResult}
       />
 
-      {/* Action Buttons Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
+      {/* Action Buttons Row: Primary & Secondary Pills */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
         <button
           type="button"
           disabled={isBusy}
           onClick={() => cameraInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-[#2563EB] text-white text-xs font-bold shadow-soft hover:bg-[#1D4ED8] transition-colors cursor-pointer disabled:opacity-50"
+          className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-[#2563EB] text-white text-xs sm:text-sm font-bold shadow-soft hover:bg-[#1D4ED8] transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
         >
           <Camera className="w-4 h-4" />
           <span>Take Photo</span>
@@ -545,14 +526,14 @@ export default function ScannerPage() {
           type="button"
           disabled={isBusy}
           onClick={() => fileInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs font-bold shadow-soft hover:bg-[#F3F4F6] transition-colors cursor-pointer disabled:opacity-50"
+          className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs sm:text-sm font-bold shadow-soft hover:bg-[#F3F4F6] transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
         >
           <ImageIcon className="w-4 h-4 text-[#2563EB]" />
           <span>Upload Photo / PDF</span>
         </button>
 
-        <Link href="/rates" className="col-span-2 sm:col-span-1">
-          <div className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs font-bold shadow-soft hover:bg-[#F3F4F6] transition-colors">
+        <Link href="/rates" className="w-full">
+          <div className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs sm:text-sm font-bold shadow-soft hover:bg-[#F3F4F6] transition-all cursor-pointer active:scale-[0.98]">
             <SlidersHorizontal className="w-4 h-4 text-[#64748B]" />
             <span>Auto 2024 ACR</span>
           </div>
@@ -560,11 +541,11 @@ export default function ScannerPage() {
       </div>
 
       {/* PhilHealth Rate Audit Status Card */}
-      <Card className="hover:border-[#2563EB] transition-all cursor-pointer bg-white border-[#CBD5E1]">
+      <Card className="hover:border-[#2563EB] transition-all cursor-pointer bg-white border-[#CBD5E1]/70 rounded-2xl shadow-soft">
         <Link href="/rates">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] shrink-0">
+              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 text-[#2563EB] flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
@@ -593,8 +574,8 @@ export default function ScannerPage() {
       </Card>
 
       {/* 2-Column Info Grid */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1] shadow-soft flex items-center gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1]/70 shadow-soft flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-4 h-4" />
           </div>
@@ -608,7 +589,7 @@ export default function ScannerPage() {
           </div>
         </div>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1] shadow-soft flex items-center gap-3">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1]/70 shadow-soft flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0">
             <Accessibility className="w-4 h-4" />
           </div>

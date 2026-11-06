@@ -242,10 +242,9 @@ export async function POST(req: Request) {
       system: `${SYSTEM_PROMPT}\n\n${auditContext}`,
       messages,
       temperature: 0.4,
-      maxTokens: 2048,
     });
 
-    return result.toDataStreamResponse();
+    return result.toUIMessageStreamResponse();
   } catch (err) {
     console.error("Audit Copilot chat error:", err);
     const message =
