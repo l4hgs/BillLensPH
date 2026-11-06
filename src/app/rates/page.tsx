@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ModeSelector } from "@/components/layout/ModeSelector";
 import { formatPHP } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -296,9 +295,6 @@ export default function RatesPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-3xl mx-auto animate-in fade-in duration-300">
-      {/* Top 3 Mode Selector */}
-      <ModeSelector />
-
       {/* Header Info */}
       <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#CBD5E1] shadow-soft">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

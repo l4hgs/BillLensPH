@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ModeSelector } from "@/components/layout/ModeSelector";
 import { ScannerViewfinder } from "@/components/scanner/ScannerViewfinder";
 import { StatementStagingCard } from "@/components/scanner/StatementStagingCard";
 import { createClient } from "@/lib/supabase/client";
@@ -432,9 +431,6 @@ export default function ScannerPage() {
           }
         }}
       />
-
-      {/* Top 3 Mode Selectors (Grid on desktop, stacked on mobile) */}
-      <ModeSelector />
 
       {/* Centered Heading & Muted Subtitle */}
       <div className="text-center space-y-1.5 pt-1">

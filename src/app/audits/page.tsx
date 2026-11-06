@@ -13,7 +13,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { ModeSelector } from "@/components/layout/ModeSelector";
 import { cn, formatPHP } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { formatFileSize } from "@/lib/imageCompression";
@@ -224,9 +223,6 @@ export default function DocumentArchivePage() {
 
   return (
     <div className="space-y-4 sm:space-y-6 max-w-3xl mx-auto animate-in fade-in duration-300">
-      {/* Top 3 Mode Selector */}
-      <ModeSelector />
-
       {/* Audit Protection Total Solid Banner (Solid Brand Blue #2563EB, No Gradient) */}
       <div className="rounded-2xl bg-[#2563EB] text-white p-4 sm:p-5 shadow-soft flex items-center justify-between gap-3">
         <div className="flex items-center gap-3.5 min-w-0">
