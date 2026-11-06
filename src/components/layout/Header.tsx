@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Menu, HelpCircle, User as UserIcon } from "lucide-react";
+import { Menu, User as UserIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
@@ -109,14 +109,6 @@ export function Header() {
 
         {/* Right action icons */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <Link
-            href="/copilot"
-            className="w-8 h-8 rounded-full border border-[#CBD5E1] bg-white flex items-center justify-center text-[#64748B] hover:text-[#1E293B] hover:bg-[#F3F4F6] transition-colors"
-            title="Help & Guidelines"
-          >
-            <HelpCircle className="w-4 h-4" />
-          </Link>
-
           {user ? (
             <Link
               href="/auth"
