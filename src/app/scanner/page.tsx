@@ -8,8 +8,6 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   ArrowRight,
-  CheckCircle2,
-  Accessibility,
   AlertCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -572,37 +570,6 @@ export default function ScannerPage() {
           </CardContent>
         </Link>
       </Card>
-
-      {/* 2-Column Info Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full">
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1]/70 shadow-soft flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-4 h-4" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-bold text-[#64748B] block">
-              Case Rate DB
-            </span>
-            <span className="font-extrabold text-xs sm:text-sm text-[#1E293B]">
-              All-Case Rates v3
-            </span>
-          </div>
-        </div>
-
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#CBD5E1]/70 shadow-soft flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0">
-            <Accessibility className="w-4 h-4" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-bold text-[#64748B] block">
-              Statutory VAT
-            </span>
-            <span className="font-extrabold text-xs sm:text-sm text-[#1E293B]">
-              Auto 20% + VAT Zero
-            </span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
