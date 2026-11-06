@@ -1,20 +1,7 @@
 "use client";
 
 import React from "react";
-import {
-  Zap,
-  Grid,
-  CheckCircle2,
-  Loader2,
-  Sparkles,
-  FileText,
-  ArrowRight,
-  RotateCcw,
-  Trash2,
-  UploadCloud,
-  Plus,
-} from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { UploadCloud, Trash2, X } from "lucide-react";
 import { formatFileSize } from "@/lib/imageCompression";
 import type { ScannedPage, PipelineStage } from "@/types/audit";
 
@@ -25,17 +12,22 @@ interface ScannerViewfinderProps {
   stage: PipelineStage;
   statusMessage: string;
   uploadProgress: number;
-  isFlashOn: boolean;
-  setIsFlashOn: (val: boolean) => void;
-  showGrid: boolean;
-  setShowGrid: (val: boolean) => void;
   isDragging: boolean;
   onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave: (e: React.DragEvent<HTMLDivElement>) => void;
   onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   onBrowseFiles: () => void;
-  onRetakeActive: () => void;
   onRemovePage: (index: number) => void;
+}
+
+function getFileTypeLabel(page: ScannedPage): string {
+  const mime = page.result.mimeType?.toLowerCase() || "";
+  const name = page.originalName.toLowerCase();
+  if (mime.includes("pdf") || name.endsWith(".pdf")) return "PDF";
+  if (mime.includes("png") || name.endsWith(".png")) return "PNG";
+  if (mime.includes("webp") || name.endsWith(".webp")) return "WEBP";
+  if (mime.includes("heic") || name.endsWith(".heic")) return "HEIC";
+  return "JPG";
 }
 
 export function ScannerViewfinder({
@@ -45,329 +37,174 @@ export function ScannerViewfinder({
   stage,
   statusMessage,
   uploadProgress,
-  isFlashOn,
-  setIsFlashOn,
-  showGrid,
-  setShowGrid,
   isDragging,
   onDragOver,
   onDragLeave,
   onDrop,
   onBrowseFiles,
-  onRetakeActive,
   onRemovePage,
 }: ScannerViewfinderProps) {
-  const activePage = pages[activePageIndex] ?? null;
   const isBusy =
     stage === "compressing" ||
     stage === "uploading" ||
     stage === "staging_db";
 
-  const totalOriginalBytes = pages.reduce(
-    (acc, p) => acc + p.result.originalSize,
-    0
-  );
-  const totalCompressedBytes = pages.reduce(
-    (acc, p) => acc + p.result.compressedSize,
-    0
-  );
-  const overallSavingsPercent =
-    totalOriginalBytes > 0
-      ? Math.max(
-          0,
-          Math.round(
-            ((totalOriginalBytes - totalCompressedBytes) / totalOriginalBytes) *
-              100
-          )
-        )
-      : 0;
-
   return (
-    <Card
+    <div
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`overflow-hidden border transition-all duration-200 shadow-soft bg-white ${
-        isDragging
-          ? "border-[#2563EB] bg-blue-50/20"
-          : "border-[#CBD5E1]"
-      }`}
+      className="w-full rounded-[28px] bg-white border border-[#CBD5E1]/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-8 transition-all"
     >
-      <div className="p-5 sm:p-7 flex flex-col items-center bg-[#F3F4F6]/50">
-        {/* Top Bar inside Viewfinder */}
-        <div className="w-full flex items-center justify-between mb-4">
-          {stage === "completed" ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>STAGED FOR AI OCR</span>
-            </div>
-          ) : isBusy ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#2563EB] text-[11px] font-bold">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2563EB]" />
-              <span>
-                {stage === "compressing"
-                  ? "COMPRESSING IMAGE..."
-                  : stage === "uploading"
-                  ? "ENCRYPTED UPLOAD..."
-                  : "STAGING AUDIT..."}
-              </span>
-            </div>
-          ) : activePage ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#2563EB] text-[11px] font-bold">
-              <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
-              <span>
-                PAGE {activePageIndex + 1} OF {pages.length} LOCKED
-              </span>
-            </div>
-          ) : (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>AUTO-FRAME READY</span>
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsFlashOn(!isFlashOn)}
-              className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
-                isFlashOn
-                  ? "bg-amber-100 border-amber-300 text-amber-800"
-                  : "bg-white border-[#CBD5E1] text-[#64748B] hover:bg-[#F3F4F6]"
-              }`}
-              aria-label="Toggle Flash"
-            >
-              <Zap className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowGrid(!showGrid)}
-              className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
-                showGrid
-                  ? "bg-blue-50 border-blue-300 text-[#2563EB]"
-                  : "bg-white border-[#CBD5E1] text-[#64748B] hover:bg-[#F3F4F6]"
-              }`}
-              aria-label="Toggle Grid"
-            >
-              <Grid className="w-4 h-4" />
-            </button>
-          </div>
+      {/* Dropzone Container */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          if (!isBusy) {
+            onBrowseFiles();
+          }
+        }}
+        onKeyDown={(e) => {
+          if ((e.key === "Enter" || e.key === " ") && !isBusy) {
+            e.preventDefault();
+            onBrowseFiles();
+          }
+        }}
+        className={`w-full min-h-[220px] sm:min-h-[240px] rounded-2xl transition-all duration-200 flex flex-col items-center justify-center p-6 sm:p-8 text-center cursor-pointer select-none ${
+          isDragging
+            ? "bg-[#E8EDF5] ring-2 ring-[#2563EB]/40"
+            : "bg-[#F1F3F5] hover:bg-[#EAECEF]"
+        }`}
+      >
+        {/* Upload Icon Tile */}
+        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white shadow-xs flex items-center justify-center mb-3 sm:mb-3.5 text-[#1E293B]">
+          <UploadCloud className="w-7 h-7 stroke-[1.8] text-[#1E293B]" />
         </div>
 
-        {/* Central Camera Reticle & Interactive Dropzone Frame */}
-        <div
-          onClick={() => {
-            if (!activePage && !isBusy) {
-              onBrowseFiles();
-            }
-          }}
-          className={`relative w-full max-w-xs sm:max-w-sm h-72 sm:h-84 my-3 flex items-center justify-center rounded-2xl border-2 border-[#CBD5E1] bg-white overflow-hidden transition-all ${
-            !activePage && !isBusy ? "cursor-pointer hover:border-[#2563EB] hover:bg-blue-50/20" : ""
-          }`}
-        >
+        {/* Dropzone Title */}
+        <p className="font-semibold text-sm sm:text-base text-[#1E293B]">
+          {isDragging
+            ? "Drop statement here"
+            : "Tap or drag & drop statement here"}
+        </p>
 
-          {/* Optional 3x3 Alignment Grid Overlay */}
-          {showGrid && (
-            <div className="absolute inset-4 grid grid-cols-3 grid-rows-3 pointer-events-none z-10 opacity-25">
-              <div className="border-r border-b border-blue-400" />
-              <div className="border-r border-b border-blue-400" />
-              <div className="border-b border-blue-400" />
-              <div className="border-r border-b border-blue-400" />
-              <div className="border-r border-b border-blue-400" />
-              <div className="border-b border-blue-400" />
-              <div className="border-r border-b border-blue-400" />
-              <div className="border-r border-b border-blue-400" />
-              <div />
-            </div>
-          )}
-
-          {/* STATE A: Live Preview of Selected Image or PDF inside Reticle */}
-          {activePage ? (
-            <div className="relative w-full h-full flex flex-col items-center justify-center p-2.5 bg-slate-900/5">
-              {activePage.result.mimeType === "application/pdf" ? (
-                <div className="flex flex-col items-center justify-center text-center p-6 bg-white/95 rounded-2xl border border-[#CBD5E1] shadow-sm max-w-[240px]">
-                  <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 text-[#DC2626] flex items-center justify-center mb-3">
-                    <FileText className="w-7 h-7" />
-                  </div>
-                  <p className="text-xs font-bold text-[#1E293B] line-clamp-2 break-all">
-                    {activePage.originalName}
-                  </p>
-                  <span className="mt-1 text-[11px] font-medium text-[#64748B]">
-                    PDF Statement •{" "}
-                    {formatFileSize(activePage.result.compressedSize)}
-                  </span>
-                </div>
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={activePage.result.previewUrl}
-                  alt={activePage.originalName}
-                  className="w-full h-full object-contain rounded-xl shadow-xs bg-white"
-                />
-              )}
-
-              {/* Compression Badge Overlay inside top of reticle */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-full bg-[#1E293B]/90 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1.5 z-20 shadow-sm">
-                {activePage.result.wasCompressed ? (
-                  <>
-                    <span className="text-slate-300 line-through">
-                      {formatFileSize(activePage.result.originalSize)}
-                    </span>
-                    <ArrowRight className="w-2.5 h-2.5 text-emerald-400" />
-                    <span className="text-emerald-300 font-bold">
-                      {formatFileSize(activePage.result.compressedSize)}
-                    </span>
-                    <span className="text-emerald-400">
-                      (-{activePage.result.compressionRatio}%)
-                    </span>
-                  </>
-                ) : (
-                  <span>
-                    {formatFileSize(activePage.result.compressedSize)} •{" "}
-                    {activePage.result.mimeType === "application/pdf"
-                      ? "PDF Ready"
-                      : "Optimal"}
-                  </span>
-                )}
-              </div>
-
-              {/* Quick Retake / Delete floating pills at bottom of reticle */}
-              {!isBusy && stage !== "completed" && (
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 z-20">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRetakeActive();
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 hover:bg-white text-[#1E293B] border border-[#CBD5E1] text-[11px] font-bold shadow-sm transition-all cursor-pointer"
-                  >
-                    <RotateCcw className="w-3 h-3 text-[#2563EB]" />
-                    <span>Retake</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemovePage(activePageIndex);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 hover:bg-rose-50 text-[#DC2626] border border-[#CBD5E1] text-[11px] font-bold shadow-sm transition-all cursor-pointer"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>Remove</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* STATE B: Empty Viewfinder with Laser Line & Dropzone Prompt */
-            <>
-              <div className="absolute left-6 right-6 h-[2px] bg-[#2563EB] shadow-[0_0_24px_4px_rgba(37,99,235,0.7)] animate-pulse z-10 pointer-events-none" />
-              <div className="absolute top-6 bottom-6 w-[1.5px] bg-[#2563EB]/35 pointer-events-none" />
-
-              <div className="flex flex-col items-center justify-center text-center px-6 z-10">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 text-[#2563EB] flex items-center justify-center mb-3 shadow-2xs">
-                  <UploadCloud className="w-6 h-6" />
-                </div>
-                <p className="text-xs font-bold text-[#1E293B]">
-                  {isDragging
-                    ? "Drop hospital bill here"
-                    : "Tap or drag & drop statement here"}
-                </p>
-                <p className="text-[11px] text-[#64748B] mt-0.5">
-                  Auto-downscales to 1600px • WebP/JPEG (~300KB)
-                </p>
-
-                <div className="w-40 space-y-2 opacity-25 pointer-events-none mt-4">
-                  <div className="h-2 bg-[#64748B] rounded-full w-full" />
-                  <div className="h-1.5 bg-[#CBD5E1] rounded-full w-5/6 mx-auto" />
-                  <div className="h-1.5 bg-[#CBD5E1] rounded-full w-4/6 mx-auto" />
-                </div>
-              </div>
-
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap px-4 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-[#CBD5E1] text-xs font-bold text-[#1E293B] shadow-xs z-20">
-                Align Itemized Statement (ISA) within frame
-              </div>
-            </>
-          )}
-
-          {/* Loading / Progress Overlay inside Reticle */}
-          {isBusy && (
-            <div className="absolute inset-0 bg-white/90 backdrop-blur-xs z-30 flex flex-col items-center justify-center p-6 text-center">
-              <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] mb-3">
-                <Loader2 className="w-6 h-6 animate-spin" />
-              </div>
-              <p className="text-xs sm:text-sm font-bold text-[#1E293B]">
-                {statusMessage}
-              </p>
-              {(stage === "uploading" || stage === "staging_db") && (
-                <div className="w-48 h-2 bg-[#CBD5E1] rounded-full overflow-hidden mt-3">
-                  <div
-                    className="h-full bg-[#2563EB] transition-all duration-300 rounded-full"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Multi-Page Statement Queue Strip */}
-        {pages.length > 0 && (
-          <div className="w-full max-w-sm mt-2 pt-3 border-t border-[#CBD5E1]">
-            <div className="flex items-center justify-between text-[11px] text-[#64748B] mb-2">
-              <span className="font-bold text-[#1E293B]">
-                Statement Pages ({pages.length})
-              </span>
-              <span>
-                Total: {formatFileSize(totalCompressedBytes)}{" "}
-                {overallSavingsPercent > 0 && (
-                  <span className="text-emerald-600 font-bold">
-                    (Saved {overallSavingsPercent}%)
-                  </span>
-                )}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {pages.map((p, idx) => {
-                const isSelected = idx === activePageIndex;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setActivePageIndex(idx)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                      isSelected
-                        ? "bg-[#2563EB] text-white border-[#2563EB] shadow-xs"
-                        : "bg-white text-[#1E293B] border-[#CBD5E1] hover:bg-[#F3F4F6]"
-                    }`}
-                  >
-                    <span>Page {idx + 1}</span>
-                  </button>
-                );
-              })}
-
-              {stage !== "completed" && !isBusy && (
-                <button
-                  type="button"
-                  onClick={onBrowseFiles}
-                  className="px-3.5 py-1.5 rounded-full text-xs font-bold border border-dashed border-[#2563EB] text-[#2563EB] bg-blue-50/50 hover:bg-blue-100/60 transition-all shrink-0 cursor-pointer inline-flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Page</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Supported Forms note */}
-        <p className="text-xs text-[#64748B] text-center mt-2 font-medium">
-          Supports DOH standard billing, PhilHealth CF2 & SOA forms
+        {/* Dropzone Helper Text */}
+        <p className="text-xs text-[#64748B] mt-1">
+          Auto-downscales to 1600px • WebP/JPEG (~300KB)
         </p>
       </div>
-    </Card>
+
+      {/* Caption below dropzone */}
+      <p className="text-xs text-[#64748B] text-center mt-3 sm:mt-4 font-normal">
+        Supports DOH standard billing, PhilHealth CF2 & SOA forms
+      </p>
+
+      {/* File Rows List */}
+      {pages.length > 0 && (
+        <div className="mt-6 space-y-3">
+          {pages.map((page, index) => {
+            const isRowInProgress = isBusy && index === activePageIndex;
+            const fileType = getFileTypeLabel(page);
+
+            let progressText = `${formatFileSize(page.result.compressedSize)}`;
+            if (stage === "uploading") {
+              const currentBytes = Math.round(
+                (uploadProgress / 100) * page.result.compressedSize
+              );
+              progressText = `${formatFileSize(currentBytes)} of ${formatFileSize(page.result.compressedSize)}`;
+            } else if (stage === "compressing") {
+              progressText = statusMessage || `Optimizing page ${index + 1}...`;
+            } else if (stage === "staging_db") {
+              progressText = "Staging draft audit...";
+            }
+
+            return (
+              <React.Fragment key={page.id}>
+                {index > 0 && (
+                  <div className="flex justify-center items-center gap-1.5 py-0.5">
+                    <span className="w-1 h-1 rounded-full bg-[#CBD5E1]" />
+                    <span className="w-1 h-1 rounded-full bg-[#CBD5E1]" />
+                    <span className="w-1 h-1 rounded-full bg-[#CBD5E1]" />
+                  </div>
+                )}
+
+                <div
+                  onClick={() => setActivePageIndex(index)}
+                  className={`w-full rounded-2xl border bg-white p-3.5 sm:p-4 transition-all duration-200 ${
+                    index === activePageIndex
+                      ? "border-[#2563EB]/40 shadow-xs"
+                      : "border-[#E5E7EB] hover:border-[#CBD5E1]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* File Type Tile */}
+                      <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-[#F4F4F5] border border-[#E5E7EB] flex items-center justify-center shrink-0">
+                        <span className="text-[11px] sm:text-xs font-bold text-[#1E293B] uppercase tracking-wider">
+                          {fileType}
+                        </span>
+                      </div>
+
+                      {/* Filename & Size Stack */}
+                      <div className="min-w-0">
+                        <p className="text-xs sm:text-sm font-semibold text-[#1E293B] truncate max-w-[200px] sm:max-w-xs md:max-w-sm">
+                          {page.originalName}
+                        </p>
+                        <p className="text-[11px] sm:text-xs text-[#64748B] mt-0.5">
+                          {isRowInProgress ? progressText : formatFileSize(page.result.compressedSize)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Icon: X (cancel) when in-progress, Trash when idle */}
+                    {isRowInProgress ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemovePage(index);
+                        }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[#64748B] hover:text-[#1E293B] hover:bg-[#F4F4F5] transition-colors cursor-pointer shrink-0"
+                        aria-label="Cancel upload"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemovePage(index);
+                        }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-[#64748B] hover:text-[#DC2626] hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                        aria-label="Remove statement file"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Thin Rounded Progress Bar */}
+                  {isRowInProgress && (
+                    <div className="w-full h-1 bg-[#E5E7EB] rounded-full overflow-hidden mt-3">
+                      <div
+                        className="h-full bg-[#2563EB] rounded-full transition-all duration-300"
+                        style={{
+                          width:
+                            stage === "uploading"
+                              ? `${Math.max(8, uploadProgress)}%`
+                              : "65%",
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

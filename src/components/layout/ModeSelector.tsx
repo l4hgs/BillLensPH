@@ -42,7 +42,7 @@ export function ModeSelector() {
   const pathname = usePathname();
 
   return (
-    <div className="grid grid-cols-3 gap-2.5 sm:gap-4 w-full">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 w-full">
       {modes.map((mode) => {
         const isActive =
           (mode.id === "isa" && (pathname === "/scanner" || pathname === "/")) ||
@@ -56,7 +56,7 @@ export function ModeSelector() {
             key={mode.id}
             href={mode.href}
             className={cn(
-              "flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl border transition-all duration-200 text-center relative",
+              "flex flex-row sm:flex-col items-center justify-start sm:justify-center p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 text-left sm:text-center relative min-h-[68px] sm:min-h-[96px] gap-3 sm:gap-1.5",
               isActive
                 ? "bg-white border-[#2563EB] text-[#2563EB] shadow-xs"
                 : "bg-white border-[#CBD5E1] text-[#64748B] hover:border-slate-400 hover:bg-[#F3F4F6] shadow-soft"
@@ -64,7 +64,7 @@ export function ModeSelector() {
           >
             <div
               className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center mb-1.5 transition-colors",
+                "w-10 h-10 rounded-full flex items-center justify-center shrink-0 sm:mb-1 transition-colors",
                 isActive
                   ? "bg-blue-50 text-[#2563EB]"
                   : "bg-[#F3F4F6] text-[#64748B]"
@@ -73,22 +73,24 @@ export function ModeSelector() {
               <Icon className="w-5 h-5" />
             </div>
 
-            <span
-              className={cn(
-                "font-bold text-xs tracking-tight",
-                isActive ? "text-[#2563EB]" : "text-[#1E293B]"
-              )}
-            >
-              {mode.label}
-            </span>
+            <div className="flex-1 sm:flex-initial">
+              <span
+                className={cn(
+                  "font-bold text-xs sm:text-sm tracking-tight block",
+                  isActive ? "text-[#2563EB]" : "text-[#1E293B]"
+                )}
+              >
+                {mode.label}
+              </span>
 
-            <span className="text-[10px] text-[#64748B] mt-0.5 font-medium">
-              {mode.sub}
-            </span>
+              <span className="text-[11px] text-[#64748B] font-medium block">
+                {mode.sub}
+              </span>
+            </div>
 
             {/* Active indicator dot */}
             {isActive && (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] mt-1.5" />
+              <span className="w-2 h-2 sm:w-1.5 sm:h-1.5 rounded-full bg-[#2563EB] shrink-0 sm:mt-1" />
             )}
           </Link>
         );
