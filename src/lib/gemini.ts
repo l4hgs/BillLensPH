@@ -70,15 +70,14 @@ export async function extractBillWithGemini(
     );
   }
 
-  // Prioritize the latest Gemini 3 Flash and Gemini 2.5 models (plus optional GEMINI_MODEL override)
+  // Prioritize the latest Gemini 3 Flash models (plus optional GEMINI_MODEL override)
   const configuredModel = process.env.GEMINI_MODEL?.trim();
   const models = Array.from(
     new Set([
       ...(configuredModel ? [configuredModel] : []),
       "gemini-3-flash-preview",
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-2.5-pro",
+      "gemini-3.8-flash",
+      "gemini-3.5-flash-lite",
       "gemini-flash-latest",
     ])
   );

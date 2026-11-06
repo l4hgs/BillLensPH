@@ -1,259 +1,389 @@
-import { streamText } from "ai";
+import { NextRequest, NextResponse } from "next/server";
+import {
+  convertToModelMessages,
+  createUIMessageStreamResponse,
+  streamText,
+  toUIMessageStream,
+  type ModelMessage,
+  type UIMessage,
+} from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createClient } from "@/lib/supabase/server";
-import type { AuditEngineResult } from "@/types/audit";
-import type { Json } from "@/lib/supabase/database.types";
+import { runAuditEngine, toMatchedPackage } from "@/lib/auditEngine";
+import {
+  applyOverridesToBill,
+  statusOverridesFrom,
+} from "@/lib/auditOverrides";
+import { formatPHP } from "@/lib/utils";
+import type {
+  AuditEngineResult,
+  AuditOverrides,
+  AuditedLineItem,
+  ExtractedBillData,
+  MatchedCasePackage,
+} from "@/types/audit";
 
 export const maxDuration = 60;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function tierLabel(status: string): string {
-  switch (status) {
-    case "covered":
-      return "🟢 Covered";
-    case "review_worthy":
-      return "🟡 Review-worthy";
-    case "out_of_pocket":
-      return "🔴 Out-of-pocket";
-    default:
-      return status;
-  }
+function isAuditEngineResult(value: unknown): value is AuditEngineResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as AuditEngineResult).line_items) &&
+    typeof (value as AuditEngineResult).gross_total === "number"
+  );
 }
 
-function buildAuditContext(audit: AuditEngineResult): string {
-  const greenItems = audit.line_items.filter((i) => i.status === "covered");
+function isExtractedBillData(value: unknown): value is ExtractedBillData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as ExtractedBillData).line_items)
+  );
+}
+
+function isAuditOverrides(value: unknown): value is AuditOverrides {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatItemList(items: AuditedLineItem[], maxItems = 25): string {
+  if (items.length === 0) return "  - None";
+  const slice = items.slice(0, maxItems);
+  const lines = slice.map((item) => {
+    const qtyUnit = `${item.quantity} × ${formatPHP(item.unit_price)}`;
+    const savingsNote =
+      item.suggested_deduction && item.suggested_deduction > 0
+        ? ` | Suggested Deduction: ${formatPHP(item.suggested_deduction)}`
+        : "";
+    const reasonText = item.flag_reason
+      ? `\n    Reason: ${item.flag_reason}`
+      : "";
+    return `  - [${item.category}] "${item.description}" (${qtyUnit} = ${formatPHP(
+      item.total_amount
+    )})${savingsNote}${reasonText}`;
+  });
+  if (items.length > maxItems) {
+    lines.push(`  - ...and ${items.length - maxItems} additional item(s).`);
+  }
+  return lines.join("\n");
+}
+
+function buildAuditContextBlock(audit: AuditEngineResult | null): string {
+  if (!audit) {
+    return [
+      "=== PATIENT AUDIT CONTEXT ===",
+      "No specific hospital bill is attached to this chat session yet.",
+      "Answer general questions about Philippine hospital billing, PhilHealth All Case Rates (ACR), Senior Citizen / PWD discounts (RA 9994 / RA 10754), and Malasakit Center / DSWD / PCSO medical assistance clearly.",
+    ].join("\n");
+  }
+
+  const coveredItems = audit.line_items.filter((i) => i.status === "covered");
   const yellowItems = audit.line_items.filter(
     (i) => i.status === "review_worthy"
   );
-  const redItems = audit.line_items.filter(
-    (i) => i.status === "out_of_pocket"
-  );
+  const redItems = audit.line_items.filter((i) => i.status === "out_of_pocket");
 
-  const formatItems = (items: typeof audit.line_items) =>
-    items
-      .map(
-        (i) =>
-          `  - ${i.description} (${i.category}): ₱${i.total_amount.toLocaleString()}` +
-          (i.flag_reason ? ` — Flag: ${i.flag_reason}` : "") +
-          (i.suggested_deduction
-            ? ` — Suggested deduction: ₱${i.suggested_deduction.toLocaleString()}`
-            : "")
-      )
-      .join("\n");
-
-  const pkgInfo =
+  const matchedPackagesText =
     audit.detected_case_packages.length > 0
       ? audit.detected_case_packages
           .map(
-            (p) =>
-              `  • ${p.keyword} (${p.code}): Total rate ₱${p.total_rate.toLocaleString()} (HCI ₱${p.hci_fee.toLocaleString()} + PF ₱${p.prof_fee.toLocaleString()})\n    Inclusive items: ${p.inclusive_items.join(", ") || "N/A"}`
+            (pkg) =>
+              `  - ${pkg.keyword} (RVS/ICD Code: ${pkg.code}) | Total Case Rate: ${formatPHP(
+                pkg.total_rate
+              )} (Health Care Institution / HCI Fee: ${formatPHP(
+                pkg.hci_fee
+              )}, Doctor's Professional Fee / PF Share: ${formatPHP(
+                pkg.prof_fee
+              )})`
           )
           .join("\n")
-      : "  No PhilHealth case package was matched to this bill.";
+      : "  - No specific PhilHealth Case Rate package matched yet.";
 
-  const flagsSummary =
+  const flagsText =
     audit.flags.length > 0
       ? audit.flags
           .map(
             (f) =>
-              `  ⚠ [${f.severity.toUpperCase()}] ${f.title}: ${f.description}` +
-              (f.potential_savings
-                ? ` (potential savings: ₱${f.potential_savings.toLocaleString()})`
-                : "")
+              `  - [${f.severity.toUpperCase()}] ${f.title}: ${
+                f.description
+              } (Est. Savings: ${formatPHP(f.potential_savings)})`
           )
           .join("\n")
-      : "  No additional flags.";
+      : "  - None";
 
-  return `
-=== AUDIT CONTEXT (ID: ${audit.audit_id}) ===
+  const totalPotentialSavings =
+    audit.disputed_overcharge_total + audit.senior_pwd_savings;
 
-Hospital: ${audit.hospital_name}
-${audit.patient_name ? `Patient: ${audit.patient_name}` : ""}
-${audit.statement_number ? `Statement #: ${audit.statement_number}` : ""}
-
-FINANCIAL SUMMARY:
-  Gross total billed:        ₱${audit.gross_total.toLocaleString()}
-  Hospital asks (out-of-pocket): ₱${audit.actual_out_of_pocket.toLocaleString()}
-  PhilHealth coverage total: ₱${audit.philhealth_coverage_total.toLocaleString()}
-  Senior/PWD savings:        ₱${audit.senior_pwd_savings.toLocaleString()}
-  Disputed overcharges:      ₱${audit.disputed_overcharge_total.toLocaleString()}
-  Fair out-of-pocket:        ₱${audit.fair_out_of_pocket.toLocaleString()}
-
-MATCHED PHILHEALTH CASE PACKAGES:
-${pkgInfo}
-
-AUDIT FLAGS:
-${flagsSummary}
-
-NEGOTIATION BRIEF:
-  ${audit.negotiation_brief_summary}
-
-LINE ITEMS BY STATUS:
-
-${tierLabel("covered")} Items (${greenItems.length}):
-${greenItems.length > 0 ? formatItems(greenItems) : "  None"}
-
-${tierLabel("review_worthy")} Items (${yellowItems.length}):
-${yellowItems.length > 0 ? formatItems(yellowItems) : "  None"}
-
-${tierLabel("out_of_pocket")} Items (${redItems.length}):
-${redItems.length > 0 ? formatItems(redItems) : "  None"}
-
-=== END AUDIT CONTEXT ===
-`.trim();
+  return [
+    "=== ACTIVE HOSPITAL BILL AUDIT CONTEXT ===",
+    `Hospital / Facility: ${audit.hospital_name}`,
+    audit.patient_name ? `Patient Name: ${audit.patient_name}` : null,
+    audit.statement_number
+      ? `Statement / SOA Number: ${audit.statement_number}`
+      : null,
+    `Senior Citizen (60+) / PWD Audit Savings Detected: ${
+      audit.senior_pwd_savings > 0
+        ? `Yes (${formatPHP(audit.senior_pwd_savings)} under RA 9994 / RA 10754)`
+        : "None flagged"
+    }`,
+    audit.negotiation_brief_summary
+      ? `Audit Summary: ${audit.negotiation_brief_summary}`
+      : null,
+    "",
+    "--- FINANCIAL SUMMARY ---",
+    `- Total Gross Billed: ${formatPHP(audit.gross_total)}`,
+    `- PhilHealth Case Rate Coverage Applied/Expected: ${formatPHP(
+      audit.philhealth_coverage_total
+    )}`,
+    `- Statutory Senior/PWD Savings Identified: ${formatPHP(
+      audit.senior_pwd_savings
+    )}`,
+    `- Flagged Unbundled / Overcharge Total: ${formatPHP(
+      audit.disputed_overcharge_total
+    )}`,
+    `- Combined Potential Savings: ${formatPHP(totalPotentialSavings)}`,
+    `- Hospital Stated Net Balance: ${formatPHP(audit.actual_out_of_pocket)}`,
+    `- Estimated Fair Out-of-Pocket Balance (after corrections): ${formatPHP(
+      audit.fair_out_of_pocket
+    )}`,
+    "",
+    "--- MATCHED PHILHEALTH CASE RATE PACKAGE(S) ---",
+    matchedPackagesText,
+    "",
+    "--- HIGH-LEVEL AUDIT FLAGS ---",
+    flagsText,
+    "",
+    `--- YELLOW FLAGS: WORTH ASKING BILLING ABOUT (${yellowItems.length} item(s)) ---`,
+    formatItemList(yellowItems),
+    "",
+    `--- RED ITEMS: PAY OUT OF POCKET (${redItems.length} item(s)) ---`,
+    formatItemList(redItems),
+    "",
+    `--- GREEN ITEMS: COVERED BY PHILHEALTH / DISCOUNTS (${coveredItems.length} item(s)) ---`,
+    formatItemList(coveredItems),
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// System prompt
-// ---------------------------------------------------------------------------
+function buildSystemPrompt(audit: AuditEngineResult | null): string {
+  const contextBlock = buildAuditContextBlock(audit);
 
-const SYSTEM_PROMPT = `You are BillLens Copilot, a warm and empathetic AI financial navigator for Filipino patients and their families. You help people understand their hospital bills, PhilHealth coverage, and financial assistance options in the Philippines.
+  return `You are the **BillLens PH AI Health & Subsidy Copilot**, an empathetic, sharp, and trustworthy Patient Financial Navigator in the Philippines.
 
-CORE BEHAVIOR:
-- Speak in clear, accessible language. Default to conversational Taglish (Tagalog-English mix) when the user writes in Filipino, otherwise use plain English.
-- When explaining billing items, be specific — reference the actual line items, amounts, and flags from the audit context provided.
-- Be empathetic and reassuring. Many patients are stressed about medical costs.
-- Always be practical and action-oriented: give step-by-step instructions when advising on what to do.
+ROLE & MISSION:
+You help Filipino patients and their families understand opaque hospital Itemized Statements of Account (ISAs / SOAs), verify PhilHealth All Case Rates (ACR) deductions, spot illegal or mistaken "unbundling" of mandatory surgical/ward supplies, check statutory Senior Citizen & PWD discounts, and navigate government medical subsidies.
 
-KNOWLEDGE AREAS:
-1. **PhilHealth Case Rate Rules**: Explain what the case rate package covers, what "inclusive items" means (drugs, labs, supplies bundled into the HCI fee are NOT supposed to be billed separately), and what the HCI vs Professional Fee split means.
-2. **Unbundling / Overcharges**: If items are flagged yellow or red, explain in plain terms why they may be overcharged. Example: "This lab test is already included in your case rate package — the hospital should not be charging you extra for it."
-3. **Senior Citizen / PWD Discounts**: RA 9994 (Senior Citizens Act) mandates a 20% discount and 12% VAT exemption on medical services. RA 10754 extends similar benefits to PWDs. Explain eligibility and how to verify the discount was applied.
-4. **Malasakit Center Assistance**: Provide detailed, actionable guidance:
-   - What it is: A one-stop shop in DOH-licensed hospitals that consolidates government financial assistance (DSWD AICS, PCSO, DOH MAP, PhilHealth).
-   - Requirements: Valid government ID, clinical abstract/medical certificate, itemized billing statement/SOA, Certificate of Indigency from barangay (if applicable), PhilHealth MDR/member data record.
-   - Process: Go to the Malasakit Center desk (usually near the billing department), submit documents, they assess and consolidate assistance from multiple agencies.
-   - Typical coverage: Can reduce or eliminate remaining balance after PhilHealth for qualified indigent patients.
-5. **PCSO / DSWD / DOH Medical Assistance**:
-   - PCSO: Accepts walk-in or by mail. Requirements: Medical abstract, doctor's prescription, billing statement, 2 valid IDs, barangay certificate of indigency.
-   - DSWD AICS: Crisis Intervention assistance for medical needs. Bring SOA, clinical abstract, valid ID, barangay certificate.
-   - DOH MAP (Medical Assistance Program): Available at DOH regional offices and select hospitals.
-6. **Hospital Bill Disputes**: Guide patients on how to:
-   - Request an itemized breakdown from the billing department.
-   - Identify and challenge specific line items that were already included in the PhilHealth case rate.
-   - File a complaint with PhilHealth if the hospital refuses to correct unbundled charges.
-   - Contact the hospital's Patient Relations or Social Services department.
+COMMUNICATION STYLE & LANGUAGE:
+- Be warm, respectful, reassuring, and empowering—patients and families looking at hospital bills are often stressed.
+- Write in clear, plain English or natural conversational Taglish (match the user's language preference; if they ask in English, respond in accessible Philippine English with familiar local terms; if they ask in Tagalog/Taglish, respond in warm, natural Taglish).
+- Use concise bullet points, bold key peso amounts (e.g., **₱15,500.00**), and keep explanations easy to read on a mobile screen.
+- Ground every billing explanation in the patient's actual audit data below whenever available. Cite specific line items, prices, and case rate breakdowns from their bill.
 
-RESPONSE FORMAT:
-- Keep responses focused and scannable. Use bullet points and bold for key information.
-- For amounts, always format as ₱XX,XXX.XX.
-- When referencing specific bill items, cite them by name and category.
-- If you don't know something specific to the patient's situation, say so honestly and suggest where they can get the exact answer.
+PHILIPPINE HEALTHCARE & SUBSIDY KNOWLEDGE BASE:
+1. **PhilHealth All Case Rates (ACR) & Anti-Unbundling Rules:**
+   - Each PhilHealth case rate package is split into two parts:
+     a) **Health Care Institution (HCI) Fee** (typically 60%–70% of the package): Covers room & board, operating/delivery room fees, standard diagnostic labs (CBC, urinalysis, routine X-ray), standard drugs/IV fluids, and mandatory OR/ward supplies (gloves, syringes, sutures, sterile drapes, trocars, catheters, PACU/recovery room).
+     b) **Professional Fee (PF) Share** (typically 30%–40% of the package): Directly deducted from the attending physician's, surgeon's, and anesthesiologist's professional fees.
+   - **Why items are flagged Yellow ("Worth asking billing about"):** When a hospital bills routine supplies, diagnostics, or drugs separately as out-of-pocket charges even though they are already bundled inside the PhilHealth HCI Case Rate, or when a mandatory 20% Senior/PWD discount + 12% VAT exemption was missed on the item. Patients have the right to politely ask the Hospital Billing / PhilHealth Desk for a line-item reconciliation.
+   - **No Balance Billing (NBB) Policy:** Indigent, sponsored, Kasambahay, and Senior Citizen/Lifetime members admitted in basic/ward accommodations in government/DOH hospitals are entitled to zero out-of-pocket charges for covered services.
 
-DISCLAIMER (include naturally at the end of relevant responses, don't repeat it every message):
-"_Paalala: Ang mga sagot ko ay para sa billing/financial guidance lamang at hindi po ito medical advice. Para sa mga medikal na katanungan, kumonsulta po sa inyong doktor._"
+2. **Senior Citizen (RA 9994) & PWD (RA 10754) Statutory Rights:**
+   - Entitled to a **12% VAT exemption** PLUS a mandatory **20% discount** on net medical/hospital charges, professional fees, diagnostic/laboratory tests, and medicines.
+   - Calculation sequence: Gross Charge → deduct 12% VAT (divide by 1.12) → deduct 20% Senior/PWD discount → deduct PhilHealth Case Rate benefit.
 
-You have the full audit context below. Use it to give specific, personalized answers about this patient's bill.
-`;
+3. **Malasakit Center (RA 11463) & Social Medical Subsidies (DSWD, PCSO, DOH MAIP):**
+   - A **Malasakit Center** is a one-stop shop inside DOH and public hospitals integrating **PhilHealth, DOH (MAIP), DSWD (AICS), and PCSO (MAP)** to reduce a financially distressed patient's bill to the lowest possible amount (often zero balance in public wards).
+   - **Core Documents Needed for Malasakit Center / DSWD / PCSO Assistance:**
+     1. **Final or Updated Itemized Statement of Account (ISA / Billing Statement)** duly signed by the Hospital Billing Officer (indicating PhilHealth and Senior/PWD deductions already applied).
+     2. **Medical Abstract or Clinical Summary** (signed by the Attending Physician with diagnosis, clinical course, and license/PTR number).
+     3. **Certificate of Indigency** or **Barangay Certificate of Residency** (from the patient's Barangay Hall) or **Social Case Study Report (SCSR)** from the hospital Medical Social Worker (MSWD) or LGU CSWDO/MSWDO.
+     4. **Valid Government-Issued IDs** (at least 2 photocopies with signatures) of **both the patient and the authorized family representative/watcher** (plus an Authorization Letter if the patient cannot process it personally).
+     5. **Official Prescription / Charge Slips / Price Quotation** (if requesting assistance for specific high-cost medicines, implants, chemotherapy, dialysis, or diagnostic procedures).
+   - For private hospital patients: Explain that while Malasakit Centers are housed in government hospitals, patients in private hospitals can still request **Guarantee Letters (GL)** from **PCSO Medical Access Program (MAP)**, **DSWD AICS**, **DOH MAIP** (via partner private hospitals or elected officials' medical assistance desks), and their local **LGU / Mayor's / Governor's Office** before discharge.
 
-// ---------------------------------------------------------------------------
-// POST handler — streaming chat
-// ---------------------------------------------------------------------------
+MANDATORY DISCLAIMER:
+- Always conclude your response (or include a brief note at the end) reminding the user:
+  *"Disclaimer: This guidance is for hospital billing audit and financial assistance navigation only, and does not constitute formal medical or legal advice."*
 
-export async function POST(req: Request) {
+${contextBlock}`;
+}
+
+function normalizeToUIMessages(rawMessages: unknown): UIMessage[] {
+  if (!Array.isArray(rawMessages)) return [];
+
+  return rawMessages
+    .map((msg, index): UIMessage | null => {
+      if (!msg || typeof msg !== "object") return null;
+      const record = msg as Record<string, unknown>;
+      const role =
+        record.role === "user" ||
+        record.role === "assistant" ||
+        record.role === "system"
+          ? record.role
+          : "user";
+      const id =
+        typeof record.id === "string" && record.id.trim()
+          ? record.id
+          : `msg-${index + 1}`;
+
+      if (Array.isArray(record.parts) && record.parts.length > 0) {
+        return {
+          id,
+          role,
+          parts: record.parts as UIMessage["parts"],
+        };
+      }
+
+      if (typeof record.content === "string") {
+        return {
+          id,
+          role,
+          parts: [{ type: "text", text: record.content }],
+        };
+      }
+
+      return null;
+    })
+    .filter((m): m is UIMessage => m !== null);
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { messages, auditId } = body;
-
-    if (!messages || !Array.isArray(messages)) {
-      return new Response(
-        JSON.stringify({ error: "Missing messages array." }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!auditId) {
-      return new Response(
-        JSON.stringify({ error: "Missing auditId parameter." }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // ── Authenticate ─────────────────────────────────────────────────────
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return new Response(
-        JSON.stringify({ error: "You must be signed in to use Copilot." }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // ── Fetch audit record ───────────────────────────────────────────────
-    const { data: auditRow, error: fetchErr } = await supabase
-      .from("audits")
-      .select("audit_results, hospital_name, total_billed, estimated_out_of_pocket")
-      .eq("id", auditId)
-      .maybeSingle();
-
-    if (fetchErr || !auditRow) {
-      return new Response(
-        JSON.stringify({
-          error: fetchErr?.message || "Audit record not found.",
-        }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Build context string from persisted audit_results
-    let auditContext = "";
-    const auditResults = auditRow.audit_results as Record<string, Json | undefined> | null;
-
-    if (
-      auditResults &&
-      typeof auditResults === "object" &&
-      Array.isArray((auditResults as unknown as AuditEngineResult).line_items)
-    ) {
-      auditContext = buildAuditContext(auditResults as unknown as AuditEngineResult);
-    } else {
-      // Minimal fallback context
-      auditContext = [
-        `Hospital: ${auditRow.hospital_name}`,
-        `Total billed: ₱${(auditRow.total_billed ?? 0).toLocaleString()}`,
-        `Estimated out-of-pocket: ₱${(auditRow.estimated_out_of_pocket ?? 0).toLocaleString()}`,
-        "(Detailed line-item data is not yet available — the bill may not have been analyzed yet.)",
-      ].join("\n");
-    }
-
-    // ── Configure Gemini via Vercel AI SDK ────────────────────────────────
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "AI service is not configured." }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+      return NextResponse.json(
+        {
+          error:
+            "GEMINI_API_KEY environment variable is not configured. Please check .env.local.",
+        },
+        { status: 500 }
       );
     }
 
+    const body = await req.json();
+    const auditId: string | undefined =
+      typeof body.audit_id === "string"
+        ? body.audit_id
+        : typeof body.auditId === "string"
+          ? body.auditId
+          : undefined;
+
+    const clientSnapshot: AuditEngineResult | null = isAuditEngineResult(
+      body.audit_snapshot
+    )
+      ? body.audit_snapshot
+      : null;
+
+    const uiMessages = normalizeToUIMessages(body.messages);
+    if (uiMessages.length === 0) {
+      return NextResponse.json(
+        { error: "At least one chat message is required." },
+        { status: 400 }
+      );
+    }
+
+    // 1. Fetch audit context from Supabase if audit_id is provided
+    let resolvedAudit: AuditEngineResult | null = clientSnapshot;
+
+    if (auditId) {
+      try {
+        const supabase = await createClient();
+        const { data: row } = await supabase
+          .from("audits")
+          .select("*")
+          .eq("id", auditId)
+          .maybeSingle();
+
+        if (row) {
+          if (clientSnapshot) {
+            // Prefer live client snapshot if the user has active unsaved overrides in the Studio,
+            // while ensuring hospital_name / totals stay aligned with the DB row if missing.
+            resolvedAudit = {
+              ...clientSnapshot,
+              hospital_name:
+                clientSnapshot.hospital_name ||
+                row.hospital_name ||
+                "Philippine Healthcare Institution",
+            };
+          } else if (isAuditEngineResult(row.audit_results)) {
+            resolvedAudit = row.audit_results;
+          } else {
+            const raw = (row.raw_extracted_data ?? {}) as Record<
+              string,
+              unknown
+            >;
+            if (isExtractedBillData(raw.ocr)) {
+              const overrides = isAuditOverrides(raw.overrides)
+                ? raw.overrides
+                : {};
+              const isSenior =
+                typeof raw.is_senior_or_pwd === "boolean"
+                  ? raw.is_senior_or_pwd
+                  : Boolean(raw.ocr.is_senior_or_pwd);
+
+              let referencePackages: MatchedCasePackage[] = [];
+              const { data: pkgRows } = await supabase
+                .from("philhealth_packages")
+                .select("*");
+              if (pkgRows && pkgRows.length > 0) {
+                referencePackages = pkgRows.map(toMatchedPackage);
+              }
+
+              resolvedAudit = runAuditEngine(
+                applyOverridesToBill(raw.ocr, overrides),
+                {
+                  auditId: row.id,
+                  isSeniorOrPwdOverride: isSenior,
+                  referencePackages,
+                  manualStatusOverrides: statusOverridesFrom(overrides),
+                }
+              );
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn(
+          "Could not load audit row from Supabase in /api/audit/chat, using snapshot fallback:",
+          dbErr
+        );
+      }
+    }
+
+    // 2. Build system prompt with injected Philippine billing & audit context
+    const systemPrompt = buildSystemPrompt(resolvedAudit);
+    const modelMessages: ModelMessage[] =
+      await convertToModelMessages(uiMessages);
+
+    // 3. Stream response from Gemini Flash via Vercel AI SDK
     const google = createGoogleGenerativeAI({ apiKey });
-    const modelName =
-      process.env.GEMINI_CHAT_MODEL?.trim() ||
-      process.env.GEMINI_MODEL?.trim() ||
-      "gemini-2.5-flash";
+    const modelId =
+      process.env.GEMINI_MODEL?.trim() || "gemini-3-flash-preview";
 
-    // ── Stream the response ──────────────────────────────────────────────
     const result = streamText({
-      model: google(modelName),
-      system: `${SYSTEM_PROMPT}\n\n${auditContext}`,
-      messages,
-      temperature: 0.4,
-      maxTokens: 2048,
+      model: google(modelId),
+      system: systemPrompt,
+      messages: modelMessages,
+      temperature: 0.3,
     });
 
-    return result.toDataStreamResponse();
-  } catch (err) {
-    console.error("Audit Copilot chat error:", err);
-    const message =
-      err instanceof Error ? err.message : "Internal chat processing error.";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
+    return createUIMessageStreamResponse({
+      stream: toUIMessageStream({
+        stream: result.stream,
+        originalMessages: uiMessages,
+        onError: (error) => {
+          console.error("Gemini Copilot stream error:", error);
+          if (error instanceof Error) return error.message;
+          return "Failed to stream response from Gemini Flash.";
+        },
+      }),
     });
+  } catch (err: unknown) {
+    console.error("Audit Copilot Chat API error:", err);
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Failed to generate Copilot response.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

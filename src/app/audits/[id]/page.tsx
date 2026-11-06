@@ -22,6 +22,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AuditLineItemRow } from "@/components/audit/AuditLineItemRow";
+import { AuditCopilotDrawer } from "@/components/audit/AuditCopilotDrawer";
 import { OverrideModal } from "@/components/audit/OverrideModal";
 import {
   TIER_META,
@@ -693,6 +694,8 @@ export default function AuditStudioPage({
           onClose={() => setEditingId(null)}
         />
       )}
+
+      <AuditCopilotDrawer auditId={id} auditResult={result} />
     </div>
   );
 }

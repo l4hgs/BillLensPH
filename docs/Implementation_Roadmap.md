@@ -39,9 +39,9 @@ BillLens PH is a mobile-first web application that translates opaque Philippine 
 * [x] Add the Manual Override modal for editing OCR misreads or adjusting line-item values.
 
 ### Week 5: AI Health & Subsidy Copilot Chatbot
-* [ ] Create the floating chat drawer component in the Audit Studio.
-* [ ] Configure context injection so the AI chatbot understands the active bill metadata and PhilHealth rules.
-* [ ] Test conversational prompts regarding Malasakit desk requirements and case rate eligibility.
+* [x] Create the floating chat drawer component in the Audit Studio.
+* [x] Configure context injection so the AI chatbot understands the active bill metadata and PhilHealth rules.
+* [x] Test conversational prompts regarding Malasakit desk requirements and case rate eligibility.
 
 ### Week 6: Negotiation Brief Export, Testing & Polish
 * [ ] Build the formal letter export view optimized for browser printing (`window.print()`).
