@@ -23,6 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AuditLineItemRow } from "@/components/audit/AuditLineItemRow";
 import { OverrideModal } from "@/components/audit/OverrideModal";
+import { AuditCopilotDrawer } from "@/components/audit/AuditCopilotDrawer";
 import {
   TIER_META,
   TrafficLightSummary,
@@ -693,6 +694,9 @@ export default function AuditStudioPage({
           onClose={() => setEditingId(null)}
         />
       )}
+
+      {/* Week 5 AI Health & Subsidy Copilot Chat Drawer */}
+      <AuditCopilotDrawer auditId={id} hospitalName={result?.hospital_name} />
     </div>
   );
 }

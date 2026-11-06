@@ -244,7 +244,7 @@ export async function POST(req: Request) {
       temperature: 0.4,
     });
 
-    return result.toUIMessageStreamResponse();
+    return result.toTextStreamResponse();
   } catch (err) {
     console.error("Audit Copilot chat error:", err);
     const message =
