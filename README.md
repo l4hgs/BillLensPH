@@ -10,10 +10,10 @@
 | :--- | :--- | :--- |
 | **Week 1** | Foundation, Supabase Auth (Google OAuth + Email) & Mobile UI Shell | ✅ **100% Complete** |
 | **Week 2** | Document Ingestion, Client-Side WebP Compression & `bill-uploads` Storage RLS | ✅ **100% Complete** |
-| **Week 3** | Gemini Flash Multimodal Vision OCR & Rule-Based PhilHealth Matching Engine | 🚧 **Next Up** |
-| **Week 4** | Interactive Audit Studio & Three-Tier Traffic-Light Categorization UI | ⏳ Planned |
-| **Week 5** | AI Health & Malasakit Subsidy Copilot Chatbot | ⏳ Planned |
-| **Week 6** | Printable Negotiation Brief Export (`window.print()`) & Vercel Deployment | ⏳ Planned |
+| **Week 3** | Gemini Flash Multimodal Vision OCR & Rule-Based PhilHealth Matching Engine | ✅ **100% Complete** |
+| **Week 4** | Interactive Audit Studio & Three-Tier Traffic-Light Categorization UI | ✅ **100% Complete** |
+| **Week 5** | AI Health & Malasakit Subsidy Copilot Chatbot | ✅ **100% Complete** |
+| **Week 6** | Printable Negotiation Brief Export (`window.print()`) & Vercel Deployment Ready | ✅ **100% Complete** |
 
 ---
 
@@ -44,10 +44,14 @@ BillLensPH/
 │
 ├── src/
 │   ├── app/                                # ⚡ Next.js App Router pages & route handlers
+│   │   ├── api/audit/ocr/route.ts          # Multimodal Gemini Flash Vision OCR & audit engine endpoint
+│   │   ├── api/audit/chat/route.ts         # Context-injected AI Copilot streaming endpoint
 │   │   ├── (auth)/auth/page.tsx            # Sign In, Create Account & Verified Profile view
 │   │   ├── auth/callback/route.ts          # OAuth PKCE code exchange endpoint
 │   │   ├── scanner/page.tsx                # Scan Hub controller (Camera capture, dropzone & staging)
 │   │   ├── audits/page.tsx                 # Document Archive (live Supabase audits + sample records)
+│   │   ├── audits/[id]/page.tsx            # Interactive Audit Studio (Traffic-Light tiers & overrides)
+│   │   ├── audits/[id]/brief/page.tsx      # Printable Formal Negotiation Brief view (`window.print()`)
 │   │   ├── rates/page.tsx                  # PhilHealth All-Case-Rates (ACR v3) directory
 │   │   ├── copilot/page.tsx                # AI Health & Subsidy Copilot interface
 │   │   ├── layout.tsx                      # Root responsive shell (Header + MobileContainer + BottomNav)
@@ -56,10 +60,15 @@ BillLensPH/
 │   ├── components/                         # 🧩 Modular UI & Feature Components
 │   │   ├── ui/                             # Reusable primitives (`button.tsx`, `card.tsx`, `badge.tsx`)
 │   │   ├── layout/                         # Navigation & shell (`Header.tsx`, `BottomNav.tsx`, `ModeSelector.tsx`)
-│   │   └── scanner/                        # Scanner feature views (`ScannerViewfinder.tsx`, `StatementStagingCard.tsx`)
+│   │   ├── scanner/                        # Scanner feature views (`ScannerViewfinder.tsx`, `StatementStagingCard.tsx`)
+│   │   └── audit/                          # Audit Studio, Copilot Drawer & Negotiation Brief components
 │   │
 │   ├── lib/                                # 🛠️ Core Engines & Supabase Clients
 │   │   ├── supabase/                       # Browser, Server, Middleware clients & clock-skew normalizer
+│   │   ├── gemini.ts                       # Gemini 3 Flash Vision extraction engine
+│   │   ├── auditEngine.ts                  # PhilHealth ACR matching, unbundling & Senior/PWD rule engine
+│   │   ├── auditOverrides.ts               # Non-destructive manual override diffing & application
+│   │   ├── sampleAudits.ts                 # Built-in Philippine hospital ISA fixtures for E2E testing
 │   │   ├── imageCompression.ts             # Client-side canvas downscaler (max 1600px, WebP/JPEG ~300KB)
 │   │   └── utils.ts                        # PHP currency formatter (`formatPHP`) & class utilities
 │   │

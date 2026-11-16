@@ -10,7 +10,7 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 mobile-only-bottom-nav bg-white/95 backdrop-blur-lg border-t border-[#CBD5E1] pb-safe shadow-[0_-4px_20px_rgba(30,41,59,0.04)]">
+    <nav className="no-print print:hidden fixed bottom-0 left-0 right-0 z-40 mobile-only-bottom-nav bg-white/95 backdrop-blur-lg border-t border-[#CBD5E1] pb-safe shadow-[0_-4px_20px_rgba(30,41,59,0.04)]">
       <div className="flex items-center justify-around px-6 py-2 max-w-md mx-auto">
         {/* Archive tab */}
         <Link

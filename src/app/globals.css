@@ -74,3 +74,29 @@ body {
     display: none !important;
   }
 }
+
+/* Week 6: Formal Negotiation Brief Print Styles */
+@page {
+  size: A4 portrait;
+  margin: 12mm 14mm;
+}
+
+@media print {
+  html,
+  body {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    font-size: 11pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

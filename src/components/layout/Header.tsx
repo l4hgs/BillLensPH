@@ -49,7 +49,7 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-[#CBD5E1] px-3 sm:px-6 py-2 transition-all">
+    <header className="no-print print:hidden sticky top-0 z-40 bg-white border-b border-[#CBD5E1] px-3 sm:px-6 py-2 transition-all">
       <div className="max-w-4xl lg:max-w-5xl mx-auto flex items-center justify-between gap-2">
         {/* Left branding with Mascot Logo (no gray background, larger size) */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">

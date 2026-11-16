@@ -271,7 +271,7 @@ export function AuditCopilotDrawer({
   return (
     <>
       {/* Floating Ask Copilot Button inside Audit Studio */}
-      <div className="fixed bottom-24 right-4 z-40 md:bottom-8 md:right-8">
+      <div className="no-print print:hidden fixed bottom-24 right-4 z-40 md:bottom-8 md:right-8">
         <button
           type="button"
           onClick={() => setIsOpen(true)}

@@ -44,10 +44,10 @@ BillLens PH is a mobile-first web application that translates opaque Philippine 
 * [x] Test conversational prompts regarding Malasakit desk requirements and case rate eligibility.
 
 ### Week 6: Negotiation Brief Export, Testing & Polish
-* [ ] Build the formal letter export view optimized for browser printing (`window.print()`).
-* [ ] Conduct end-to-end testing with sample Philippine hospital bills (such as cardiac catheterization statements).
-* [ ] Polish micro-interactions, responsive padding, and accessibility.
-* [ ] Prepare deployment on Vercel and final presentation assets.
+* [x] Build the formal letter export view optimized for browser printing (`window.print()`).
+* [x] Conduct end-to-end testing with sample Philippine hospital bills (such as cardiac catheterization statements).
+* [x] Polish micro-interactions, responsive padding, and accessibility.
+* [x] Prepare deployment on Vercel and final presentation assets.
 
 ---
 

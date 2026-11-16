@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Building2,
   Loader2,
+  Printer,
   RefreshCw,
   Save,
   ShieldCheck,
@@ -36,6 +37,7 @@ import {
   countOverrides,
   statusOverridesFrom,
 } from "@/lib/auditOverrides";
+import { getSampleBillById } from "@/lib/sampleAudits";
 import { cn, formatPHP } from "@/lib/utils";
 import type {
   AuditOverrides,
@@ -91,6 +93,41 @@ export default function AuditStudioPage({
     let cancelled = false;
 
     (async () => {
+      const sampleBill = getSampleBillById(id);
+      if (sampleBill) {
+        const { data: pkgRows } = await supabase
+          .from("philhealth_packages")
+          .select("*");
+        if (cancelled) return;
+        let sampleOverrides: AuditOverrides = {};
+        let sampleSenior = Boolean(sampleBill.is_senior_or_pwd);
+        try {
+          const cached = sessionStorage.getItem(
+            `billlens-sample-overrides-${id}`
+          );
+          if (cached) {
+            const parsed = JSON.parse(cached) as {
+              o?: AuditOverrides;
+              s?: boolean;
+            };
+            if (isOverrides(parsed.o)) sampleOverrides = parsed.o;
+            if (typeof parsed.s === "boolean") sampleSenior = parsed.s;
+          }
+        } catch {
+          // Ignore storage parse error
+        }
+        setRawData({});
+        setOcr(sampleBill);
+        setOverrides(sampleOverrides);
+        setIsSenior(sampleSenior);
+        setSavedSnapshot(
+          JSON.stringify({ o: sampleOverrides, s: sampleSenior })
+        );
+        setPackages((pkgRows ?? []).map(toMatchedPackage));
+        setLoadState("ready");
+        return;
+      }
+
       const { data: row, error } = await supabase
         .from("audits")
         .select("*")
@@ -215,6 +252,21 @@ export default function AuditStudioPage({
     if (!result) return;
     setIsSaving(true);
     setActionError(null);
+
+    if (getSampleBillById(id)) {
+      try {
+        sessionStorage.setItem(
+          `billlens-sample-overrides-${id}`,
+          JSON.stringify({ o: overrides, s: isSenior })
+        );
+      } catch {
+        // Ignore storage error
+      }
+      setIsSaving(false);
+      setSavedSnapshot(JSON.stringify({ o: overrides, s: isSenior }));
+      setSavedNotice(true);
+      return;
+    }
 
     const { data, error } = await supabase
       .from("audits")
@@ -446,22 +498,37 @@ export default function AuditStudioPage({
                 </p>
               </div>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleAnalyze}
-              disabled={isAnalyzing || isSaving}
-              aria-label="Re-analyze with AI"
-              className="shrink-0 text-slate-600"
-            >
-              {isAnalyzing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Link href={`/audits/${id}/brief`}>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  className="font-bold"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>Export Brief</span>
+                </Button>
+              </Link>
+              {!getSampleBillById(id) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing || isSaving}
+                  aria-label="Re-analyze with AI"
+                  className="shrink-0 text-slate-600"
+                >
+                  {isAnalyzing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Re-analyze</span>
+                </Button>
               )}
-              <span className="hidden sm:inline">Re-analyze</span>
-            </Button>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
