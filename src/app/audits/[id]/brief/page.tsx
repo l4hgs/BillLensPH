@@ -18,7 +18,7 @@ import {
   buildPlainTextNegotiationBrief,
   type NegotiationBriefMeta,
 } from "@/components/audit/NegotiationBriefDocument";
-import { AuditCopilotDrawer } from "@/components/audit/AuditCopilotDrawer";
+import { AuditChatbotDrawer } from "@/components/audit/AuditChatbotDrawer";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
 import {
@@ -321,7 +321,7 @@ export default function NegotiationBriefPage({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 print:max-w-none print:space-y-0">
+    <div className="w-full max-w-5xl mx-auto space-y-6 print:max-w-none print:space-y-0">
       {/* Top Interactive Toolbar (Hidden when printing) */}
       <div className="no-print print:hidden space-y-3">
         <div className="flex flex-col gap-3 rounded-2xl border border-[#CBD5E1] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -388,7 +388,7 @@ export default function NegotiationBriefPage({
 
         {/* Optional Signatory Customization Panel */}
         {showCustomize && (
-          <div className="rounded-2xl border border-[#CBD5E1] bg-white p-4 space-y-3 animate-in fade-in duration-150">
+          <div className="rounded-2xl border border-[#CBD5E1] bg-white p-4 space-y-3 transition-opacity duration-150">
             <p className="text-xs font-bold text-[#1E293B]">
               Customize Letter Signatory &amp; Statutory Details
             </p>
@@ -479,8 +479,8 @@ export default function NegotiationBriefPage({
       {/* Printable Formal Letter Document */}
       <NegotiationBriefDocument audit={result} ocr={ocr} meta={briefMeta} />
 
-      {/* Floating Copilot Drawer (hidden during print) */}
-      <AuditCopilotDrawer auditId={id} auditResult={result} />
+      {/* Floating Chatbot Drawer (hidden during print) */}
+      <AuditChatbotDrawer auditId={id} auditResult={result} />
     </div>
   );
 }

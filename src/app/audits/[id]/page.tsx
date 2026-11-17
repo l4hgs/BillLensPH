@@ -26,7 +26,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AuditLineItemRow } from "@/components/audit/AuditLineItemRow";
-import { AuditCopilotDrawer } from "@/components/audit/AuditCopilotDrawer";
+import { AuditChatbotDrawer } from "@/components/audit/AuditChatbotDrawer";
 import { OverrideModal } from "@/components/audit/OverrideModal";
 import {
   TIER_META,
@@ -516,11 +516,11 @@ export default function AuditStudioPage({
   // Staged but never analyzed: offer to run the AI instead of an empty studio.
   if (!ocr || !result) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in duration-300">
+      <div className="w-full max-w-5xl mx-auto space-y-6">
         {backLink}
         <Card className="bg-white">
           <CardContent className="space-y-4 p-6 text-center md:p-6">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
               <Sparkles className="h-6 w-6" />
             </div>
             <div className="space-y-1">
@@ -606,7 +606,7 @@ export default function AuditStudioPage({
   const hasMatchedPackage = result.detected_case_packages.length > 0;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in duration-300 sm:space-y-5">
+    <div className="w-full max-w-5xl mx-auto space-y-6">
       {backLink}
 
       {/* Bill header */}
@@ -1123,7 +1123,7 @@ export default function AuditStudioPage({
         />
       )}
 
-      <AuditCopilotDrawer auditId={id} auditResult={result} />
+      <AuditChatbotDrawer auditId={id} auditResult={result} />
     </div>
   );
 }

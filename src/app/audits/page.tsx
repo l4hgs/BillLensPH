@@ -11,6 +11,7 @@ import {
   Camera,
   ArrowRight,
   Sparkles,
+  FolderArchive,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatPHP } from "@/lib/utils";
@@ -25,6 +26,7 @@ interface AuditDoc {
   fileSize: string;
   fileType: "PDF" | "DOCX" | "Scan";
   dateText: string;
+  createdAt: string;
   isLive?: boolean;
   /** Total flagged by the audit engine; undefined until the bill is analyzed. */
   flaggedAmount?: number;
@@ -45,6 +47,7 @@ const sampleAuditDocuments: AuditDoc[] = [
     fileSize: "4.2 MB",
     fileType: "PDF",
     dateText: "Audited Today",
+    createdAt: new Date().toISOString(),
     tags: [
       { label: "• ₱32,400 Disputed", variant: "rose" },
       { label: "ISA #2024-884", variant: "slate" },
@@ -56,7 +59,8 @@ const sampleAuditDocuments: AuditDoc[] = [
     total: 84200,
     fileSize: "2.8 MB",
     fileType: "DOCX",
-    dateText: "12.04.2024",
+    dateText: "Yesterday",
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     tags: [
       { label: "✓ PhilHealth Deducted (-₱19k)", variant: "emerald" },
       { label: "Senior 20% Applied", variant: "slate" },
@@ -68,7 +72,8 @@ const sampleAuditDocuments: AuditDoc[] = [
     total: 29800,
     fileSize: "3.1 MB",
     fileType: "PDF",
-    dateText: "08.04.2024",
+    dateText: "3 days ago",
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     tags: [
       { label: "✓ Verified Clean", variant: "emerald" },
       { label: "No DOH cap excess", variant: "slate" },
@@ -80,7 +85,8 @@ const sampleAuditDocuments: AuditDoc[] = [
     total: 65000,
     fileSize: "5.4 MB",
     fileType: "Scan",
-    dateText: "28.03.2024",
+    dateText: "2 weeks ago",
+    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
     tags: [
       { label: "Room & Board Breakdown", variant: "blue" },
       { label: "3 days semi-private", variant: "slate" },
@@ -92,7 +98,8 @@ const sampleAuditDocuments: AuditDoc[] = [
     total: 14350,
     fileSize: "1.9 MB",
     fileType: "PDF",
-    dateText: "15.03.2024",
+    dateText: "Last month",
+    createdAt: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
     tags: [{ label: "Malasakit Center Credit", variant: "teal" }],
   },
 ];
@@ -191,6 +198,7 @@ export default function DocumentArchivePage() {
               day: "numeric",
               year: "numeric",
             }),
+            createdAt: row.created_at,
             isLive: true,
             flaggedAmount: isAnalyzed ? flagged : undefined,
             tags,
@@ -211,9 +219,41 @@ export default function DocumentArchivePage() {
 
   const combinedDocs = [...liveDocs, ...sampleAuditDocuments];
 
-  const filteredDocs = combinedDocs.filter((doc) =>
-    doc.facility.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredDocs = combinedDocs.filter((doc) => {
+    // 1. Tab Time Filter
+    const now = new Date();
+    const docTime = doc.createdAt ? new Date(doc.createdAt).getTime() : 0;
+    const diffMs = now.getTime() - docTime;
+
+    if (activeTab === "Today") {
+      const docDate = new Date(doc.createdAt);
+      const isCalendarToday = docDate.toDateString() === now.toDateString();
+      const isLast24h = diffMs <= 24 * 60 * 60 * 1000 && diffMs >= 0;
+      if (!isCalendarToday && !isLast24h) return false;
+    } else if (activeTab === "This week") {
+      const isLast7d = diffMs <= 7 * 24 * 60 * 60 * 1000 && diffMs >= 0;
+      if (!isLast7d) return false;
+    } else if (activeTab === "Archive") {
+      const isOlderThan7d = diffMs > 7 * 24 * 60 * 60 * 1000;
+      if (!isOlderThan7d) return false;
+    }
+    // "All Documents" shows all records
+
+    // 2. Text Search Filter (Facility, Tags, Date)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesFacility = doc.facility.toLowerCase().includes(q);
+      const matchesDate = doc.dateText.toLowerCase().includes(q);
+      const matchesTags = doc.tags.some((t) =>
+        t.label.toLowerCase().includes(q)
+      );
+      if (!matchesFacility && !matchesDate && !matchesTags) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 
   const analyzedDocs = liveDocs.filter((doc) => doc.flaggedAmount !== undefined);
   const hasLiveTotal = analyzedDocs.length > 0;
@@ -222,36 +262,39 @@ export default function DocumentArchivePage() {
     : SAMPLE_PROTECTION_TOTAL;
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-3xl mx-auto animate-in fade-in duration-300">
-      {/* Audit Protection Total Solid Banner (Solid Brand Blue #2563EB, No Gradient) */}
-      <div className="rounded-2xl bg-[#2563EB] text-white p-4 sm:p-5 shadow-soft flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-11 h-11 rounded-xl bg-[#1D4ED8] flex items-center justify-center shrink-0 text-white">
-            <Coins className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-100 block">
-              Audit Protection Total
-            </span>
-            <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2">
-              <span className="text-xl sm:text-2xl font-black tracking-tight text-white">
-                {formatPHP(protectionTotal)}
+    <div className="w-full max-w-5xl mx-auto space-y-6">
+      {/* Redesigned Header - Clean, No Card Background */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1 pb-1 sm:pt-2 sm:pb-2">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+            Audited Hospital Statements
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Access your audited statements, PhilHealth deductions, itemized overrides, and disputed amounts.
+          </p>
+        </div>
+
+        {/* Right-aligned metric badge */}
+        <div className="shrink-0 flex items-center gap-3">
+          <div className="flex items-center gap-3 bg-white border border-slate-200/80 shadow-soft rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0 text-blue-600 shadow-2xs">
+              <Coins className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                Audit Protection Total
               </span>
-              <span className="text-xs sm:text-sm font-medium text-blue-100">
-                identified overcharges
-                {!hasLiveTotal && " (sample)"}
-              </span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-base sm:text-lg font-black tracking-tight text-blue-600">
+                  {formatPHP(protectionTotal)}
+                </span>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  identified {!hasLiveTotal && "(sample)"}
+                </span>
+              </div>
             </div>
           </div>
         </div>
-
-        <button
-          type="button"
-          className="w-9 h-9 rounded-full bg-[#1D4ED8] hover:bg-[#1E40AF] flex items-center justify-center text-white transition-colors shrink-0 cursor-pointer"
-          aria-label="View protection breakdown"
-        >
-          <ArrowRight className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Search Input Bar */}
@@ -302,13 +345,33 @@ export default function DocumentArchivePage() {
 
       {/* Document Items List */}
       <div className="space-y-3">
-        {filteredDocs.map((doc) => {
+        {filteredDocs.length === 0 ? (
+          <div className="p-8 sm:p-12 text-center bg-white rounded-2xl border border-slate-200/80 shadow-soft space-y-2.5">
+            <FolderArchive className="w-8 h-8 text-slate-400 mx-auto" />
+            <p className="text-sm font-bold text-slate-800">
+              No statements found for &ldquo;{activeTab}&rdquo;
+            </p>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {searchQuery
+                ? `No hospital statements matched your search for "${searchQuery}".`
+                : `There are no statements recorded under the ${activeTab} filter.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("All Documents");
+                setSearchQuery("");
+              }}
+              className="inline-block mt-2 text-xs font-bold text-[#2563EB] hover:underline cursor-pointer"
+            >
+              View All Documents →
+            </button>
+          </div>
+        ) : (
+          filteredDocs.map((doc) => {
           const card = (
             <Card
-              className={cn(
-                "hover:border-[#2563EB] hover:shadow-card-hover transition-all bg-white cursor-pointer group border-[#CBD5E1]",
-                doc.isLive && "border-[#2563EB]"
-              )}
+              className="hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group border-slate-200/80 rounded-2xl shadow-soft"
             >
               <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div className="flex items-start gap-3.5 flex-1 min-w-0">
@@ -319,13 +382,13 @@ export default function DocumentArchivePage() {
                       doc.fileType === "PDF" &&
                         "bg-rose-50 text-[#DC2626] border-rose-200",
                       doc.fileType === "DOCX" &&
-                        "bg-blue-50 text-[#2563EB] border-blue-200",
+                        "bg-blue-50 text-blue-600 border-blue-200",
                       doc.fileType === "Scan" &&
-                        "bg-[#F3F4F6] text-[#1E293B] border-[#CBD5E1]"
+                        "bg-blue-50 text-blue-600 border-blue-200"
                     )}
                   >
                     {doc.fileType === "Scan" ? (
-                      <Camera className="w-5 h-5 text-[#2563EB]" />
+                      <Camera className="w-5 h-5 text-blue-600" />
                     ) : (
                       <span>{doc.fileType}</span>
                     )}
@@ -397,7 +460,8 @@ export default function DocumentArchivePage() {
           ) : (
             <React.Fragment key={doc.id}>{card}</React.Fragment>
           );
-        })}
+        })
+        )}
       </div>
 
       {/* DPA 2012 Regulatory Compliance Footer */}

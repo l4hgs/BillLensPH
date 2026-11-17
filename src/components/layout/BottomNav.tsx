@@ -46,10 +46,10 @@ export function BottomNav() {
 
         {/* AI Chatbot tab */}
         <Link
-          href="/copilot"
+          href="/chatbot"
           className={cn(
             "flex flex-col items-center justify-center py-1 transition-all",
-            pathname === "/copilot"
+            pathname === "/chatbot"
               ? "text-[#2563EB] font-bold"
               : "text-[#64748B] hover:text-[#1E293B]"
           )}

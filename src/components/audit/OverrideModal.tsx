@@ -152,7 +152,7 @@ export function OverrideModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-[2px] animate-in fade-in duration-150"
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-[2px] transition-opacity duration-150"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

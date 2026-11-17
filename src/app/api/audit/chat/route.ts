@@ -191,7 +191,7 @@ function buildAuditContextBlock(audit: AuditEngineResult | null): string {
 function buildSystemPrompt(audit: AuditEngineResult | null): string {
   const contextBlock = buildAuditContextBlock(audit);
 
-  return `You are the **BillLens PH AI Health & Subsidy Copilot**, an empathetic, sharp, and trustworthy Patient Financial Navigator in the Philippines.
+  return `You are the **BillLens PH AI Health & Subsidy Chatbot**, an empathetic, sharp, and trustworthy Patient Financial Navigator in the Philippines.
 
 ROLE & MISSION:
 You help Filipino patients and their families understand opaque hospital Itemized Statements of Account (ISAs / SOAs), verify PhilHealth All Case Rates (ACR) deductions, spot illegal or mistaken "unbundling" of mandatory surgical/ward supplies, check statutory Senior Citizen & PWD discounts, and navigate government medical subsidies.
@@ -420,18 +420,18 @@ export async function POST(req: NextRequest) {
         stream: result.stream,
         originalMessages: uiMessages,
         onError: (error) => {
-          console.error("Gemini Copilot stream error:", error);
+          console.error("Gemini Chatbot stream error:", error);
           if (error instanceof Error) return error.message;
           return "Failed to stream response from Gemini Flash.";
         },
       }),
     });
   } catch (err: unknown) {
-    console.error("Audit Copilot Chat API error:", err);
+    console.error("Audit Chatbot Chat API error:", err);
     const message =
       err instanceof Error
         ? err.message
-        : "Failed to generate Copilot response.";
+        : "Failed to generate Chatbot response.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

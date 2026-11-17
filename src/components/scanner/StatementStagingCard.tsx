@@ -350,7 +350,7 @@ export function StatementStagingCard({
   // View after Gemini AI OCR Analysis has completed
   if (ocrAuditResult) {
     return (
-      <div className="w-full rounded-[28px] bg-white border border-[#CBD5E1]/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-7 space-y-4 animate-in fade-in duration-300">
+      <div className="w-full rounded-[28px] bg-white border border-[#CBD5E1]/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-7 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 text-[#2563EB] flex items-center justify-center shrink-0">
@@ -442,7 +442,7 @@ export function StatementStagingCard({
   // View after Upload to Storage is complete, ready for AI Analysis
   if (stage === "completed") {
     return (
-      <div className="w-full rounded-[28px] bg-white border border-[#CBD5E1]/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-7 space-y-4 animate-in fade-in duration-300">
+      <div className="w-full rounded-[28px] bg-white border border-[#CBD5E1]/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-7 space-y-4">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
             <Check className="w-5 h-5 stroke-[2.5]" />
@@ -562,7 +562,7 @@ export function StatementStagingCard({
 
   // Pre-upload view (Staging review)
   return (
-    <div className="w-full rounded-[28px] bg-white border border-[#CBD5E1]/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-7 space-y-4 animate-in fade-in duration-200">
+    <div className="w-full rounded-[28px] bg-white border border-[#CBD5E1]/70 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 sm:p-7 space-y-4">
       <div>
         <label
           htmlFor="hospital-name-input"

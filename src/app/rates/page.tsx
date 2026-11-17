@@ -7,7 +7,6 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  Database,
   AlertCircle,
   Plus,
   Upload,
@@ -20,7 +19,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatPHP } from "@/lib/utils";
+import { formatPHP, cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { loadPackageCatalog } from "@/lib/packageCatalog";
 import type { CatalogPackage } from "@/types/audit";
@@ -432,30 +431,19 @@ export default function RatesPage() {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 max-w-3xl mx-auto animate-in fade-in duration-300">
-      {/* Header Info */}
-      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#CBD5E1] shadow-soft">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold border border-blue-200/80">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>PhilHealth All-Case-Rates (Versioned Catalog)</span>
-              </div>
-              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold border border-emerald-200">
-                <Database className="w-3 h-3" />
-                <span>Database Single Catalog</span>
-              </div>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-              Benefit Case Rates Directory
-            </h1>
-            <p className="text-xs text-slate-600 mt-1">
-              Versioned PhilHealth circulars covering hospital facility (HCI)
-              caps, physician professional fee (PF) caps, and mandatory bundled
-              supplies.
-            </p>
-          </div>
+    <div className="w-full max-w-5xl mx-auto space-y-6">
+      {/* Redesigned Header - Clean, No Card Background */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1 pb-1 sm:pt-2 sm:pb-2">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+            Benefit Case Rates Directory
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Versioned PhilHealth circulars covering hospital facility (HCI)
+            caps, physician professional fee (PF) caps, and mandatory bundled
+            supplies.
+          </p>
+        </div>
 
           {isAdmin && (
             <Button
@@ -481,25 +469,6 @@ export default function RatesPage() {
             </Button>
           )}
         </div>
-
-        {/* Category Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-4 border-t border-[#CBD5E1] mt-4 no-scrollbar">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setSelectedCategory(cat)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all whitespace-nowrap ${
-                selectedCategory === cat
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Staff Catalog Manager Drawer / Panel */}
       {showAdminModal && (
@@ -768,15 +737,34 @@ export default function RatesPage() {
         </div>
       )}
 
-      {/* Results Header */}
-      <div className="flex items-center justify-between px-2 text-xs text-slate-600">
-        <span>
-          Showing <strong>{filtered.length}</strong> package
-          {filtered.length === 1 ? "" : "s"}
-        </span>
-        <span className="text-[11px] text-slate-600">
-          Unlisted procedures are resolved automatically via Gemini ACR
-          grounding
+      {/* 3. Filter Tabs (Category Navigation matching Archive order & style) */}
+      <div className="flex items-center justify-between border-b border-[#CBD5E1] px-2 text-xs font-bold overflow-x-auto scrollbar-none gap-4">
+        <div className="flex items-center gap-6">
+          {categories.map((cat) => {
+            const isActive = selectedCategory === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={cn(
+                  "pb-2.5 transition-all whitespace-nowrap relative font-bold cursor-pointer",
+                  isActive
+                    ? "text-[#2563EB]"
+                    : "text-[#64748B] hover:text-[#1E293B]"
+                )}
+              >
+                {cat}
+                {isActive && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2563EB] rounded-full" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap pb-2">
+          {filtered.length} package{filtered.length === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -929,7 +917,7 @@ export default function RatesPage() {
 
                   {/* Expandable Inclusions Drawer */}
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-blue-100/70 bg-blue-50/40 -mx-4 -mb-4 sm:-mx-5 sm:-mb-5 p-4 rounded-b-2xl space-y-3 animate-in fade-in duration-200">
+                    <div className="mt-3 pt-3 border-t border-blue-100/70 bg-blue-50/40 -mx-4 -mb-4 sm:-mx-5 sm:-mb-5 p-4 rounded-b-2xl space-y-3 transition-opacity duration-150">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
                           <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />

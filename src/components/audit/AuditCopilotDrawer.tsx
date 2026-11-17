@@ -28,10 +28,12 @@ export const STARTER_PROMPTS = [
   "How much should PhilHealth cover for my doctor's PF?",
 ] as const;
 
-interface AuditCopilotDrawerProps {
+export interface AuditCopilotDrawerProps {
   auditId: string;
   auditResult: AuditEngineResult;
 }
+
+export type AuditChatbotDrawerProps = AuditCopilotDrawerProps;
 
 function getMessageText(message: UIMessage): string {
   if (!Array.isArray(message.parts)) return "";
@@ -196,7 +198,7 @@ export function AuditCopilotDrawer({
     setMessages,
     clearError,
   } = useChat({
-    id: `copilot-${auditId}`,
+    id: `chatbot-${auditId}`,
     transport,
   });
 
@@ -270,18 +272,18 @@ export function AuditCopilotDrawer({
 
   return (
     <>
-      {/* Floating Ask Copilot Button inside Audit Studio */}
+      {/* Floating Ask Chatbot Button inside Audit Studio */}
       <div className="no-print print:hidden fixed bottom-24 right-4 z-40 md:bottom-8 md:right-8">
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          aria-label="Open AI Health & Subsidy Copilot"
+          aria-label="Open AI Health & Subsidy Chatbot"
           className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-[#1D4ED8] bg-[#2563EB] px-4 py-3 text-xs font-bold text-white shadow-lg transition-all duration-200 hover:bg-[#1D4ED8] active:scale-[0.98] whitespace-nowrap"
         >
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15">
             <Sparkles className="h-3.5 w-3.5 text-white" />
           </span>
-          <span>Ask Copilot</span>
+          <span>Ask Chatbot</span>
           {yellowCount > 0 && (
             <span className="rounded-full bg-[#1E293B] px-2 py-0.5 text-[10px] font-extrabold text-white">
               {yellowCount} flagged
@@ -295,7 +297,7 @@ export function AuditCopilotDrawer({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="fixed inset-0 z-[110] flex items-end justify-end bg-[#1E293B]/60 backdrop-blur-[2px] animate-in fade-in duration-150 sm:items-stretch"
+            className="fixed inset-0 z-[110] flex items-end justify-end bg-[#1E293B]/60 backdrop-blur-[2px] transition-opacity duration-150 sm:items-stretch"
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) setIsOpen(false);
             }}
@@ -303,7 +305,7 @@ export function AuditCopilotDrawer({
             <div
               role="dialog"
               aria-modal="true"
-              aria-labelledby="copilot-drawer-title"
+              aria-labelledby="chatbot-drawer-title"
               className="flex h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl border-t border-[#CBD5E1] bg-[#F3F4F6] shadow-2xl sm:h-full sm:max-w-md sm:rounded-l-3xl sm:rounded-tr-none sm:border-l sm:border-t-0"
             >
               {/* Drawer Header */}
@@ -316,10 +318,10 @@ export function AuditCopilotDrawer({
                     <div>
                       <div className="flex items-center gap-2">
                         <h2
-                          id="copilot-drawer-title"
+                          id="chatbot-drawer-title"
                           className="text-sm font-extrabold tracking-tight text-white"
                         >
-                          BillLens AI Copilot
+                          BillLens AI Chatbot
                         </h2>
                         <span className="rounded-full bg-[#2563EB] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
                           PH Navigator
@@ -351,7 +353,7 @@ export function AuditCopilotDrawer({
                     <button
                       type="button"
                       onClick={() => setIsOpen(false)}
-                      aria-label="Close Copilot drawer"
+                      aria-label="Close Chatbot drawer"
                       className="cursor-pointer rounded-full p-2 text-[#CBD5E1] transition-colors hover:bg-white/10 hover:text-white"
                     >
                       <X className="h-4 w-4" />
@@ -512,7 +514,7 @@ export function AuditCopilotDrawer({
                     <div className="flex items-start gap-2">
                       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
                       <div className="flex-1 space-y-1.5">
-                        <p className="font-bold">Could not reach AI Copilot</p>
+                        <p className="font-bold">Could not reach AI Chatbot</p>
                         <p className="text-[11px] leading-relaxed">
                           {error.message ||
                             "Please check your connection or try again."}
@@ -597,3 +599,5 @@ export function AuditCopilotDrawer({
     </>
   );
 }
+
+export const AuditChatbotDrawer = AuditCopilotDrawer;

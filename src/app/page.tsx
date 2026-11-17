@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -11,13 +13,43 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 export default function HomePage() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          setUser(session.user);
+        } else {
+          return supabase.auth.getUser().then(({ data: { user: fetchedUser } }) => {
+            setUser(fetchedUser ?? null);
+          });
+        }
+      })
+      .catch(() => {});
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   return (
-    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+    <div className="w-full max-w-5xl mx-auto space-y-6 sm:space-y-8">
       {/* Onboarding Hero Section */}
-      <div className="bg-white rounded-2xl p-5 sm:p-8 md:p-10 border border-[#CBD5E1] shadow-soft">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-4xl mx-auto">
+      <div className="bg-white rounded-3xl p-6 sm:p-8 md:p-10 border border-slate-200/80 shadow-soft">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-5xl mx-auto">
           {/* Visual Card Stack Graphic with Official Mascot */}
           <div className="relative flex items-center justify-center py-4 sm:py-6 order-1 md:order-2 overflow-hidden">
             <div className="relative w-64 h-72 sm:w-72 sm:h-80 flex items-center justify-center scale-90 sm:scale-100 origin-center transition-transform">
@@ -44,7 +76,7 @@ export default function HomePage() {
                   <div className="w-16 h-1.5 rounded-full bg-blue-300 mt-2" />
                 </div>
                 <div className="text-right text-[11px] font-bold text-blue-100">
-                  ACR 2024 Verified
+                  Versioned PhilHealth ACR
                 </div>
               </div>
 
@@ -96,7 +128,7 @@ export default function HomePage() {
           {/* Copy and CTA Side */}
           <div className="text-center md:text-left space-y-4 order-2 md:order-1">
             {/* Advocacy Pill Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[#2563EB] text-xs font-bold">
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200/80 text-[#2563EB] text-xs font-bold">
               <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
               <span>Philippine Medical Billing Transparency</span>
             </div>
@@ -106,50 +138,57 @@ export default function HomePage() {
             </h1>
 
             <p className="text-xs sm:text-sm text-[#64748B] leading-relaxed max-w-md mx-auto md:mx-0">
-              Transform complex Philippine hospital Statements of Account (ISA) into transparent itemized audits with automatic PhilHealth ACR coverage & RA 9994 / RA 10754 statutory checks.
+              Transform complex Philippine hospital Statements of Account (ISA) into transparent itemized audits with automatic PhilHealth ACR coverage &amp; RA 9994 / RA 10754 statutory checks.
             </p>
 
-            {/* Pagination Dots indicator */}
-            <div className="flex items-center justify-center md:justify-start gap-1.5 pt-1">
-              <span className="w-6 h-2 rounded-full bg-[#2563EB]" />
-              <span className="w-2 h-2 rounded-full bg-[#CBD5E1]" />
-              <span className="w-2 h-2 rounded-full bg-[#CBD5E1]" />
-            </div>
-
-            {/* Main Action Buttons: Fixed responsiveness with whitespace-nowrap and flex-wrap handling */}
-            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full">
+            {/* Main Action Buttons: Primary & Standardized Secondary (Compact Sizing) */}
+            <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full">
               <Link href="/scanner" className="w-full sm:w-auto">
                 <Button
-                  size="lg"
-                  className="w-full sm:w-auto px-6 py-3 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold shadow-md shadow-blue-500/20 whitespace-nowrap"
+                  size="md"
+                  className="w-full sm:w-auto px-4.5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold shadow-soft rounded-full text-xs sm:text-sm whitespace-nowrap h-10"
                 >
-                  <Scan className="w-4 h-4 sm:w-5 sm:h-5 mr-2 shrink-0 stroke-[2.2]" />
+                  <Scan className="w-4 h-4 mr-1.5 shrink-0 stroke-[2.2]" />
                   <span>Scan Hospital Bill</span>
-                  <ArrowRight className="w-4 h-4 ml-2 shrink-0" />
+                  <ArrowRight className="w-3.5 h-3.5 ml-1.5 shrink-0" />
                 </Button>
               </Link>
 
               <Link href="/rates" className="w-full sm:w-auto">
                 <Button
-                  variant="dark"
-                  size="lg"
-                  className="w-full sm:w-auto px-5 py-3 font-bold whitespace-nowrap"
+                  variant="outline"
+                  size="md"
+                  className="w-full sm:w-auto px-4.5 py-2 font-bold whitespace-nowrap bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 rounded-full shadow-soft text-xs sm:text-sm h-10"
                 >
-                  <Sparkles className="w-4 h-4 mr-2 shrink-0 text-yellow-400" />
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5 shrink-0 text-blue-600" />
                   <span>Browse PhilHealth Rates</span>
                 </Button>
               </Link>
             </div>
 
-            <p className="text-xs text-[#64748B]">
-              Already have an audit saved?{" "}
-              <Link
-                href="/auth"
-                className="text-[#2563EB] font-bold hover:underline"
-              >
-                Sign In
-              </Link>
-            </p>
+            {/* Auth-Aware Home State */}
+            {user ? (
+              <p className="text-xs text-slate-500">
+                Signed in as <span className="font-semibold text-slate-700">{user.email}</span> ·{" "}
+                <Link
+                  href="/audits"
+                  className="text-[#2563EB] font-bold hover:underline inline-flex items-center gap-1"
+                >
+                  <span>View Recent Audits</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </p>
+            ) : (
+              <p className="text-xs text-[#64748B]">
+                Already have an audit saved?{" "}
+                <Link
+                  href="/auth"
+                  className="text-[#2563EB] font-bold hover:underline"
+                >
+                  Sign In
+                </Link>
+              </p>
+            )}
 
             {/* Statutory Features Footer Pills */}
             <div className="pt-3 border-t border-[#CBD5E1] flex flex-wrap items-center justify-center md:justify-start gap-2.5 sm:gap-3 text-xs text-[#64748B]">
@@ -160,12 +199,12 @@ export default function HomePage() {
               <span className="text-[#CBD5E1] hidden sm:inline">•</span>
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="font-semibold whitespace-nowrap">RA 9994 (Senior Citizen)</span>
+                <span className="font-semibold whitespace-nowrap">RA 9994 (Senior) / RA 10754 (PWD)</span>
               </div>
               <span className="text-[#CBD5E1] hidden sm:inline">•</span>
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="font-semibold whitespace-nowrap">PhilHealth ACR 2024</span>
+                <span className="font-semibold whitespace-nowrap">PhilHealth ACR (Circ. 2024-0037+)</span>
               </div>
             </div>
           </div>
@@ -176,8 +215,8 @@ export default function HomePage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Quick Access Card 1 */}
         <Link href="/scanner" className="group">
-          <Card className="p-5 hover:border-[#2563EB] hover:shadow-card-hover transition-all bg-white h-full border-[#CBD5E1]">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] mb-3 group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+          <Card className="p-5 hover:border-blue-300 hover:shadow-card-hover transition-all bg-white h-full border-slate-200/80 rounded-2xl shadow-soft">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 mb-3 group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
               <Scan className="w-5 h-5" />
             </div>
             <h3 className="font-bold text-sm text-[#1E293B] group-hover:text-[#2563EB] transition-colors">
@@ -191,8 +230,8 @@ export default function HomePage() {
 
         {/* Quick Access Card 2 */}
         <Link href="/audits" className="group">
-          <Card className="p-5 hover:border-[#2563EB] hover:shadow-card-hover transition-all bg-white h-full border-[#CBD5E1]">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mb-3 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+          <Card className="p-5 hover:border-blue-300 hover:shadow-card-hover transition-all bg-white h-full border-slate-200/80 rounded-2xl shadow-soft">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 mb-3 group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
               <FolderArchive className="w-5 h-5" />
             </div>
             <h3 className="font-bold text-sm text-[#1E293B] group-hover:text-[#2563EB] transition-colors">
@@ -206,12 +245,12 @@ export default function HomePage() {
 
         {/* Quick Access Card 3 */}
         <Link href="/rates" className="group">
-          <Card className="p-5 hover:border-[#2563EB] hover:shadow-card-hover transition-all bg-white h-full border-[#CBD5E1]">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 mb-3 group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
+          <Card className="p-5 hover:border-blue-300 hover:shadow-card-hover transition-all bg-white h-full border-slate-200/80 rounded-2xl shadow-soft">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 mb-3 group-hover:bg-[#2563EB] group-hover:text-white transition-colors">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <h3 className="font-bold text-sm text-[#1E293B] group-hover:text-[#2563EB] transition-colors">
-              PhilHealth ACR 2024
+              Versioned PhilHealth ACR
             </h3>
             <p className="text-xs text-[#64748B] mt-1 leading-relaxed">
               Cross-reference official All-Case-Rates v3 to ensure mandatory hospital deductions and unbundling protection.

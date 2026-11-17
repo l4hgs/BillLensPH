@@ -30,10 +30,10 @@ const modes: ModeItem[] = [
     icon: Shield,
   },
   {
-    id: "copilot",
-    label: "AI Copilot",
+    id: "chatbot",
+    label: "AI Chatbot",
     sub: "Dispute Kit",
-    href: "/copilot",
+    href: "/chatbot",
     icon: Sparkles,
   },
 ];
@@ -47,7 +47,7 @@ export function ModeSelector() {
         const isActive =
           (mode.id === "isa" && (pathname === "/scanner" || pathname === "/")) ||
           (mode.id === "philhealth" && pathname === "/rates") ||
-          (mode.id === "copilot" && pathname === "/copilot");
+          (mode.id === "chatbot" && (pathname === "/chatbot" || pathname === "/copilot"));
 
         const Icon = mode.icon;
 

@@ -519,7 +519,7 @@ export default function ScannerPage() {
   };
 
   return (
-    <div className="max-w-[640px] w-full mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="w-full max-w-5xl mx-auto space-y-6">
       {/* Hidden File Inputs */}
       <input
         ref={cameraInputRef}
@@ -548,13 +548,13 @@ export default function ScannerPage() {
         }}
       />
 
-      {/* Centered Heading & Muted Subtitle */}
-      <div className="text-center space-y-1.5 pt-1">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1E293B]">
+      {/* Redesigned Header - Clean, No Card Background */}
+      <div className="pt-1 pb-1 sm:pt-2 sm:pb-2">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
           Scan Statement
         </h1>
-        <p className="text-xs sm:text-sm text-[#64748B]">
-          Upload or capture your Itemized Statement (ISA) for auditing.
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          Upload or capture your Itemized Statement (ISA) for automated case rate and statutory deduction auditing.
         </p>
       </div>
 
@@ -576,7 +576,7 @@ export default function ScannerPage() {
 
       {/* Error Alert Banner */}
       {errorMessage && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start justify-between gap-3 animate-in fade-in duration-200">
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start justify-between gap-3 transition-opacity duration-150">
           <div className="flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div>
@@ -652,26 +652,26 @@ export default function ScannerPage() {
           type="button"
           disabled={isBusy}
           onClick={() => fileInputRef.current?.click()}
-          className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs sm:text-sm font-bold shadow-soft hover:bg-[#F3F4F6] transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+          className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-slate-200 text-slate-800 text-xs sm:text-sm font-bold shadow-soft hover:bg-slate-50 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
         >
-          <ImageIcon className="w-4 h-4 text-[#2563EB]" />
+          <ImageIcon className="w-4 h-4 text-blue-600" />
           <span>Upload Photo / PDF</span>
         </button>
 
         <Link href="/rates" className="w-full">
-          <div className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-[#CBD5E1] text-[#1E293B] text-xs sm:text-sm font-bold shadow-soft hover:bg-[#F3F4F6] transition-all cursor-pointer active:scale-[0.98]">
-            <SlidersHorizontal className="w-4 h-4 text-[#64748B]" />
-            <span>Auto 2024 ACR</span>
+          <div className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-slate-200 text-slate-800 text-xs sm:text-sm font-bold shadow-soft hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.98]">
+            <SlidersHorizontal className="w-4 h-4 text-slate-500" />
+            <span>Versioned PhilHealth ACR</span>
           </div>
         </Link>
       </div>
 
       {/* PhilHealth Rate Audit Status Card */}
-      <Card className="hover:border-[#2563EB] transition-all cursor-pointer bg-white border-[#CBD5E1]/70 rounded-2xl shadow-soft">
+      <Card className="hover:border-blue-300 transition-all cursor-pointer bg-white border-slate-200/80 rounded-2xl shadow-soft">
         <Link href="/rates">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 text-[#2563EB] flex items-center justify-center shrink-0">
+              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
