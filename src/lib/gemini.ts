@@ -70,14 +70,15 @@ export async function extractBillWithGemini(
     );
   }
 
-  // Prioritize the latest Gemini 3 Flash models (plus optional GEMINI_MODEL override)
+  // Prioritize the latest fast Gemini 3 & 3.5 Flash models (plus optional GEMINI_MODEL override)
   const configuredModel = process.env.GEMINI_MODEL?.trim();
   const models = Array.from(
     new Set([
       ...(configuredModel ? [configuredModel] : []),
       "gemini-3-flash-preview",
+      "gemini-3.5-flash",
+      "gemini-3.1-flash-lite-preview",
       "gemini-3.8-flash",
-      "gemini-3.5-flash-lite",
       "gemini-flash-latest",
     ])
   );
@@ -174,6 +175,152 @@ export async function extractBillWithGemini(
     lastError ||
     new Error("Failed to process bill image with Gemini.")
   );
+}
+
+/**
+ * Runs Gemini Vision OCR across one or more bill pages and merges them into a
+ * single `ExtractedBillData` record without dropping pages 2..N.
+ */
+export async function extractMultiPageBillWithGemini(
+  pages: GeminiVisionOptions[]
+): Promise<ExtractedBillData> {
+  if (pages.length === 0) {
+    throw new Error("At least one bill page is required for OCR.");
+  }
+  const extractedPages: ExtractedBillData[] = [];
+  for (const page of pages) {
+    const result = await extractBillWithGemini(page);
+    extractedPages.push(result);
+  }
+  return mergeExtractedBills(extractedPages);
+}
+
+const DEFAULT_HOSPITAL_NAME = "Philippine Healthcare Institution";
+
+/**
+ * Merges per-page `ExtractedBillData` results into one combined statement.
+ * Page 2+ line item IDs are prefixed (`page2-item-1`, `page3-item-1`, ...) so
+ * line IDs never collide across pages and Audit Studio overrides stay uniquely keyed.
+ */
+export function mergeExtractedBills(
+  pages: ExtractedBillData[]
+): ExtractedBillData {
+  if (pages.length === 0) {
+    return sanitizeExtractedBill({});
+  }
+  if (pages.length === 1) {
+    return pages[0];
+  }
+
+  const mergedItems: ExtractedLineItem[] = [];
+  const codeSet = new Set<string>();
+
+  let hospitalName = DEFAULT_HOSPITAL_NAME;
+  let patientName: string | undefined;
+  let admissionDate: string | undefined;
+  let dischargeDate: string | undefined;
+  let statementNumber: string | undefined;
+  let diagnosisOrProcedure: string | undefined;
+  let isSeniorOrPwd = false;
+
+  pages.forEach((page, pageIndex) => {
+    const pageNum = pageIndex + 1;
+    if (
+      hospitalName === DEFAULT_HOSPITAL_NAME &&
+      page.hospital_name &&
+      page.hospital_name !== DEFAULT_HOSPITAL_NAME
+    ) {
+      hospitalName = page.hospital_name;
+    }
+    if (!patientName && page.patient_name) patientName = page.patient_name;
+    if (!admissionDate && page.admission_date)
+      admissionDate = page.admission_date;
+    if (!dischargeDate && page.discharge_date)
+      dischargeDate = page.discharge_date;
+    if (!statementNumber && page.statement_number)
+      statementNumber = page.statement_number;
+    if (!diagnosisOrProcedure && page.diagnosis_or_procedure) {
+      diagnosisOrProcedure = page.diagnosis_or_procedure;
+    }
+    if (page.is_senior_or_pwd) isSeniorOrPwd = true;
+
+    for (const code of page.case_rate_codes_detected) {
+      const trimmed = code.trim();
+      if (trimmed) codeSet.add(trimmed);
+    }
+
+    page.line_items.forEach((item, itemIdx) => {
+      const itemId =
+        pageNum === 1
+          ? `item-${itemIdx + 1}`
+          : `page${pageNum}-item-${itemIdx + 1}`;
+      mergedItems.push({
+        ...item,
+        id: itemId,
+      });
+    });
+  });
+
+  const combinedItemsGross = mergedItems.reduce(
+    (sum, item) => sum + item.total_amount,
+    0
+  );
+  const lastPage = pages[pages.length - 1];
+
+  // If the final page carries a cumulative grand total that covers the combined
+  // line items, prefer the final page's summary block; otherwise sum across pages.
+  const lastPageHasGrandTotal =
+    lastPage.gross_total >= combinedItemsGross * 0.9 &&
+    combinedItemsGross > 0;
+
+  const grossTotal = lastPageHasGrandTotal
+    ? lastPage.gross_total
+    : Math.max(
+        combinedItemsGross,
+        pages.reduce((sum, p) => sum + p.gross_total, 0)
+      );
+
+  const philhealthTotal = lastPageHasGrandTotal
+    ? lastPage.philhealth_total ||
+      Math.max(...pages.map((p) => p.philhealth_total))
+    : Math.max(
+        mergedItems.reduce(
+          (sum, item) => sum + (item.philhealth_deducted || 0),
+          0
+        ),
+        pages.reduce((sum, p) => sum + p.philhealth_total, 0)
+      );
+
+  const seniorDiscountTotal = lastPageHasGrandTotal
+    ? lastPage.senior_pwd_discount_total ||
+      Math.max(...pages.map((p) => p.senior_pwd_discount_total))
+    : Math.max(
+        mergedItems.reduce(
+          (sum, item) => sum + (item.discount_applied || 0),
+          0
+        ),
+        pages.reduce((sum, p) => sum + p.senior_pwd_discount_total, 0)
+      );
+
+  const netBalanceDue = lastPageHasGrandTotal
+    ? lastPage.net_balance_due
+    : Math.max(0, grossTotal - philhealthTotal - seniorDiscountTotal);
+
+  return {
+    hospital_name: hospitalName,
+    patient_name: patientName,
+    admission_date: admissionDate,
+    discharge_date: dischargeDate,
+    statement_number: statementNumber,
+    case_rate_codes_detected: Array.from(codeSet),
+    diagnosis_or_procedure: diagnosisOrProcedure,
+    is_senior_or_pwd: isSeniorOrPwd,
+    line_items: mergedItems,
+    gross_total: grossTotal,
+    philhealth_total: philhealthTotal,
+    senior_pwd_discount_total: seniorDiscountTotal,
+    net_balance_due: netBalanceDue,
+  };
 }
 
 function sanitizeExtractedBill(data: Partial<ExtractedBillData>): ExtractedBillData {

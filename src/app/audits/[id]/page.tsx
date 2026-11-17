@@ -31,7 +31,8 @@ import {
 } from "@/components/audit/TrafficLight";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
-import { runAuditEngine, toMatchedPackage } from "@/lib/auditEngine";
+import { runAuditEngine } from "@/lib/auditEngine";
+import { loadPackageCatalog } from "@/lib/packageCatalog";
 import {
   applyOverridesToBill,
   countOverrides,
@@ -42,9 +43,10 @@ import { cn, formatPHP } from "@/lib/utils";
 import type {
   AuditOverrides,
   AuditTier,
+  CatalogPackage,
   ExtractedBillData,
   ItemOverride,
-  MatchedCasePackage,
+  StatutoryRule,
 } from "@/types/audit";
 
 type LoadState = "loading" | "ready" | "not_found" | "error";
@@ -73,7 +75,10 @@ export default function AuditStudioPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rawData, setRawData] = useState<Record<string, Json | undefined>>({});
   const [ocr, setOcr] = useState<ExtractedBillData | null>(null);
-  const [packages, setPackages] = useState<MatchedCasePackage[]>([]);
+  const [packages, setPackages] = useState<CatalogPackage[]>([]);
+  const [statutoryRule, setStatutoryRule] = useState<StatutoryRule | undefined>(
+    undefined
+  );
 
   const [overrides, setOverrides] = useState<AuditOverrides>({});
   const [isSenior, setIsSenior] = useState(false);
@@ -95,9 +100,7 @@ export default function AuditStudioPage({
     (async () => {
       const sampleBill = getSampleBillById(id);
       if (sampleBill) {
-        const { data: pkgRows } = await supabase
-          .from("philhealth_packages")
-          .select("*");
+        const catalog = await loadPackageCatalog(supabase);
         if (cancelled) return;
         let sampleOverrides: AuditOverrides = {};
         let sampleSenior = Boolean(sampleBill.is_senior_or_pwd);
@@ -123,7 +126,8 @@ export default function AuditStudioPage({
         setSavedSnapshot(
           JSON.stringify({ o: sampleOverrides, s: sampleSenior })
         );
-        setPackages((pkgRows ?? []).map(toMatchedPackage));
+        setPackages(catalog.packages);
+        setStatutoryRule(catalog.statutoryRule);
         setLoadState("ready");
         return;
       }
@@ -154,11 +158,7 @@ export default function AuditStudioPage({
           ? raw.is_senior_or_pwd
           : Boolean(loadedOcr?.is_senior_or_pwd);
 
-      // Reference packages power the unbundling checks; the engine falls back to
-      // its built-in set if the table is empty or unreachable.
-      const { data: pkgRows } = await supabase
-        .from("philhealth_packages")
-        .select("*");
+      const catalog = await loadPackageCatalog(supabase);
 
       if (cancelled) return;
 
@@ -167,7 +167,8 @@ export default function AuditStudioPage({
       setOverrides(loadedOverrides);
       setIsSenior(loadedSenior);
       setSavedSnapshot(JSON.stringify({ o: loadedOverrides, s: loadedSenior }));
-      setPackages((pkgRows ?? []).map(toMatchedPackage));
+      setPackages(catalog.packages);
+      setStatutoryRule(catalog.statutoryRule);
       setLoadState("ready");
     })();
 
@@ -184,9 +185,10 @@ export default function AuditStudioPage({
       auditId: id,
       isSeniorOrPwdOverride: isSenior,
       referencePackages: packages,
+      statutoryRule,
       manualStatusOverrides: statusOverridesFrom(overrides),
     });
-  }, [ocr, overrides, isSenior, packages, id]);
+  }, [ocr, overrides, isSenior, packages, statutoryRule, id]);
 
   const isDirty =
     savedSnapshot !== "" &&

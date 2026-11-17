@@ -49,6 +49,8 @@ export interface AuditDoc {
 
 export type AuditTier = "covered" | "review_worthy" | "out_of_pocket";
 
+export type StatutoryDiscountType = "none" | "senior" | "pwd";
+
 export interface ExtractedLineItem {
   id: string;
   description: string;
@@ -66,6 +68,8 @@ export interface ExtractedLineItem {
   philhealth_deducted?: number;
   discount_applied?: number;
   balance?: number;
+  /** True when the line item is already VAT-exempt (e.g. TRAIN/CREATE VAT-exempt medicines), so 20% discount applies directly without dividing by 1.12. */
+  is_vat_exempt?: boolean;
 }
 
 export interface AuditedLineItem extends ExtractedLineItem {
@@ -112,10 +116,17 @@ export interface ExtractedBillData {
   senior_pwd_discount_total: number;
   net_balance_due: number;
   is_senior_or_pwd?: boolean;
+  /** Mutually exclusive statutory privilege (RA 9994 Senior Citizen vs RA 10754 PWD; no double-stacking). */
+  statutory_discount_type?: StatutoryDiscountType;
 }
 
 export interface AuditFlag {
-  type: "unbundled_charge" | "missing_statutory_discount" | "excess_hci_charge" | "compliance_note";
+  type:
+    | "unbundled_charge"
+    | "missing_statutory_discount"
+    | "wrong_deduction_sequence"
+    | "excess_hci_charge"
+    | "compliance_note";
   severity: "high" | "medium" | "low";
   title: string;
   description: string;
@@ -129,7 +140,42 @@ export interface MatchedCasePackage {
   total_rate: number;
   hci_fee: number;
   prof_fee: number;
+  /** Human-readable inclusions from the PhilHealth circular (display only). */
   inclusive_items: string[];
+  circular_id?: string;
+  effective_from?: string;
+  effective_to?: string | null;
+  source_url?: string | null;
+}
+
+/**
+ * A short matcher term for one package inclusion (e.g. "trocar", "pacu").
+ * `token` aliases match whole words (plurals allowed); `regex` aliases are
+ * raw patterns tested against the normalized line description.
+ */
+export interface PackageAlias {
+  alias: string;
+  kind: "token" | "regex";
+}
+
+/** A package as loaded from the catalog, with the aliases the matcher uses. */
+export interface CatalogPackage extends MatchedCasePackage {
+  aliases: PackageAlias[];
+}
+
+/**
+ * Parameterized statutory discount rule (e.g. RA 9994 / RA 10754 Senior & PWD),
+ * loaded from the `statutory_rules` table so rate/category updates do not
+ * require editing TypeScript code.
+ */
+export interface StatutoryRule {
+  rule_code: string;
+  label: string;
+  vat_divisor: number;
+  discount_rate: number;
+  incomplete_threshold: number;
+  eligible_categories: ExtractedLineItem["category"][];
+  citation: string;
 }
 
 export interface AuditEngineResult {
@@ -143,6 +189,7 @@ export interface AuditEngineResult {
   disputed_overcharge_total: number;
   philhealth_coverage_total: number;
   senior_pwd_savings: number;
+  statutory_discount_type?: StatutoryDiscountType;
   detected_case_packages: MatchedCasePackage[];
   line_items: AuditedLineItem[];
   flags: AuditFlag[];

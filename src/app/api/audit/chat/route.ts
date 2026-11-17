@@ -9,7 +9,8 @@ import {
 } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createClient } from "@/lib/supabase/server";
-import { runAuditEngine, toMatchedPackage } from "@/lib/auditEngine";
+import { runAuditEngine } from "@/lib/auditEngine";
+import { loadPackageCatalog } from "@/lib/packageCatalog";
 import {
   applyOverridesToBill,
   statusOverridesFrom,
@@ -20,7 +21,6 @@ import type {
   AuditOverrides,
   AuditedLineItem,
   ExtractedBillData,
-  MatchedCasePackage,
 } from "@/types/audit";
 
 export const maxDuration = 60;
@@ -77,53 +77,59 @@ function buildAuditContextBlock(audit: AuditEngineResult | null): string {
     ].join("\n");
   }
 
-  const coveredItems = audit.line_items.filter((i) => i.status === "covered");
-  const yellowItems = audit.line_items.filter(
+  const lineItems = Array.isArray(audit.line_items) ? audit.line_items : [];
+  const coveredItems = lineItems.filter((i) => i.status === "covered");
+  const yellowItems = lineItems.filter(
     (i) => i.status === "review_worthy"
   );
-  const redItems = audit.line_items.filter((i) => i.status === "out_of_pocket");
+  const redItems = lineItems.filter((i) => i.status === "out_of_pocket");
 
+  const detectedPackages = Array.isArray(audit.detected_case_packages)
+    ? audit.detected_case_packages
+    : [];
   const matchedPackagesText =
-    audit.detected_case_packages.length > 0
-      ? audit.detected_case_packages
+    detectedPackages.length > 0
+      ? detectedPackages
           .map(
             (pkg) =>
-              `  - ${pkg.keyword} (RVS/ICD Code: ${pkg.code}) | Total Case Rate: ${formatPHP(
-                pkg.total_rate
+              `  - ${pkg.keyword || "Package"} (RVS/ICD Code: ${pkg.code || "N/A"}) | Total Case Rate: ${formatPHP(
+                pkg.total_rate || 0
               )} (Health Care Institution / HCI Fee: ${formatPHP(
-                pkg.hci_fee
+                pkg.hci_fee || 0
               )}, Doctor's Professional Fee / PF Share: ${formatPHP(
-                pkg.prof_fee
+                pkg.prof_fee || 0
               )})`
           )
           .join("\n")
       : "  - No specific PhilHealth Case Rate package matched yet.";
 
+  const flags = Array.isArray(audit.flags) ? audit.flags : [];
   const flagsText =
-    audit.flags.length > 0
-      ? audit.flags
+    flags.length > 0
+      ? flags
           .map(
             (f) =>
-              `  - [${f.severity.toUpperCase()}] ${f.title}: ${
-                f.description
-              } (Est. Savings: ${formatPHP(f.potential_savings)})`
+              `  - [${(f.severity || "info").toUpperCase()}] ${f.title || "Notice"}: ${
+                f.description || ""
+              } (Est. Savings: ${formatPHP(f.potential_savings || 0)})`
           )
           .join("\n")
       : "  - None";
 
-  const totalPotentialSavings =
-    audit.disputed_overcharge_total + audit.senior_pwd_savings;
+  const seniorPwdSavings = Number(audit.senior_pwd_savings) || 0;
+  const disputedOvercharge = Number(audit.disputed_overcharge_total) || 0;
+  const totalPotentialSavings = disputedOvercharge + seniorPwdSavings;
 
   return [
     "=== ACTIVE HOSPITAL BILL AUDIT CONTEXT ===",
-    `Hospital / Facility: ${audit.hospital_name}`,
+    `Hospital / Facility: ${audit.hospital_name || "Philippine Healthcare Institution"}`,
     audit.patient_name ? `Patient Name: ${audit.patient_name}` : null,
     audit.statement_number
       ? `Statement / SOA Number: ${audit.statement_number}`
       : null,
     `Senior Citizen (60+) / PWD Audit Savings Detected: ${
-      audit.senior_pwd_savings > 0
-        ? `Yes (${formatPHP(audit.senior_pwd_savings)} under RA 9994 / RA 10754)`
+      seniorPwdSavings > 0
+        ? `Yes (${formatPHP(seniorPwdSavings)} under RA 9994 / RA 10754)`
         : "None flagged"
     }`,
     audit.negotiation_brief_summary
@@ -131,20 +137,16 @@ function buildAuditContextBlock(audit: AuditEngineResult | null): string {
       : null,
     "",
     "--- FINANCIAL SUMMARY ---",
-    `- Total Gross Billed: ${formatPHP(audit.gross_total)}`,
+    `- Total Gross Billed: ${formatPHP(Number(audit.gross_total) || 0)}`,
     `- PhilHealth Case Rate Coverage Applied/Expected: ${formatPHP(
-      audit.philhealth_coverage_total
+      Number(audit.philhealth_coverage_total) || 0
     )}`,
-    `- Statutory Senior/PWD Savings Identified: ${formatPHP(
-      audit.senior_pwd_savings
-    )}`,
-    `- Flagged Unbundled / Overcharge Total: ${formatPHP(
-      audit.disputed_overcharge_total
-    )}`,
+    `- Statutory Senior/PWD Savings Identified: ${formatPHP(seniorPwdSavings)}`,
+    `- Flagged Unbundled / Overcharge Total: ${formatPHP(disputedOvercharge)}`,
     `- Combined Potential Savings: ${formatPHP(totalPotentialSavings)}`,
-    `- Hospital Stated Net Balance: ${formatPHP(audit.actual_out_of_pocket)}`,
+    `- Hospital Stated Net Balance: ${formatPHP(Number(audit.actual_out_of_pocket) || 0)}`,
     `- Estimated Fair Out-of-Pocket Balance (after corrections): ${formatPHP(
-      audit.fair_out_of_pocket
+      Number(audit.fair_out_of_pocket) || 0
     )}`,
     "",
     "--- MATCHED PHILHEALTH CASE RATE PACKAGE(S) ---",
@@ -189,9 +191,14 @@ PHILIPPINE HEALTHCARE & SUBSIDY KNOWLEDGE BASE:
    - **Why items are flagged Yellow ("Worth asking billing about"):** When a hospital bills routine supplies, diagnostics, or drugs separately as out-of-pocket charges even though they are already bundled inside the PhilHealth HCI Case Rate, or when a mandatory 20% Senior/PWD discount + 12% VAT exemption was missed on the item. Patients have the right to politely ask the Hospital Billing / PhilHealth Desk for a line-item reconciliation.
    - **No Balance Billing (NBB) Policy:** Indigent, sponsored, Kasambahay, and Senior Citizen/Lifetime members admitted in basic/ward accommodations in government/DOH hospitals are entitled to zero out-of-pocket charges for covered services.
 
-2. **Senior Citizen (RA 9994) & PWD (RA 10754) Statutory Rights:**
-   - Entitled to a **12% VAT exemption** PLUS a mandatory **20% discount** on net medical/hospital charges, professional fees, diagnostic/laboratory tests, and medicines.
-   - Calculation sequence: Gross Charge → deduct 12% VAT (divide by 1.12) → deduct 20% Senior/PWD discount → deduct PhilHealth Case Rate benefit.
+2. **Senior Citizen (RA 9994) & PWD (RA 10754) Statutory Rights & Deduction Sequence (PhilHealth Advisory No. 2023-0036 / Circular 0056-2012):**
+   - Entitled to a **12% VAT exemption** PLUS a mandatory **20% discount** on medical/hospital charges, room & board, professional fees, diagnostic/laboratory tests, and medicines. (Mutually exclusive: a patient who is both a Senior Citizen and PWD may claim only one 20% discount, not 40%, per RA 9994 IRR.)
+   - **Legally Mandated Deduction Order (Not an "Either/Or" Choice):** Under **PhilHealth Advisory No. 2023-0036**, **PhilHealth Circular 0056-2012**, and **RA 9994 / RA 10754**, accredited hospitals MUST apply deductions in this exact sequence prior to discharge:
+     1) **12% VAT Exemption FIRST:** Divide VAT-inclusive charges by 1.12 (unless the item is already VAT-exempt under TRAIN/CREATE laws).
+     2) **20% Senior Citizen / PWD Discount NEXT:** Deduct 20% from the VAT-exempt amount across both Health Care Institution (HCI) charges and Doctors' Professional Fees (PF).
+     3) **PhilHealth Case Rate Benefit LAST:** Subtract the PhilHealth benefit from the remaining discounted balance (Net Payable = (Gross ÷ 1.12) × 0.80 − PhilHealth).
+   - **Why Reversing the Sequence (WRONG_DEDUCTION_SEQUENCE) is Illegal:** Private hospitals sometimes deduct PhilHealth *first* and compute the 20% discount only on the remainder ((VAT-Exempt − PhilHealth) × 0.80), which unlawfully shrinks the patient's discount by 20% × PhilHealth Benefit (e.g., a ₱4,000 overcharge on a ₱20,000 case rate).
+   - **Escalation & Reporting Channels:** If a hospital billing desk refuses to apply the proper sequential discount on top of PhilHealth prior to discharge, advise the patient to cite **PhilHealth Advisory No. 2023-0036** and report the violation to their LGU **OSCA (Office for Senior Citizens Affairs)** or **PDAO (Persons with Disability Affairs Office)**, or contact PhilHealth directly via their **Callback Channel at 0917-898-7442**.
 
 3. **Malasakit Center (RA 11463) & Social Medical Subsidies (DSWD, PCSO, DOH MAIP):**
    - A **Malasakit Center** is a one-stop shop inside DOH and public hospitals integrating **PhilHealth, DOH (MAIP), DSWD (AICS), and PCSO (MAP)** to reduce a financially distressed patient's bill to the lowest possible amount (often zero balance in public wards).
@@ -241,6 +248,14 @@ function normalizeToUIMessages(rawMessages: unknown): UIMessage[] {
           id,
           role,
           parts: [{ type: "text", text: record.content }],
+        };
+      }
+
+      if (typeof record.text === "string") {
+        return {
+          id,
+          role,
+          parts: [{ type: "text", text: record.text }],
         };
       }
 
@@ -323,20 +338,15 @@ export async function POST(req: NextRequest) {
                   ? raw.is_senior_or_pwd
                   : Boolean(raw.ocr.is_senior_or_pwd);
 
-              let referencePackages: MatchedCasePackage[] = [];
-              const { data: pkgRows } = await supabase
-                .from("philhealth_packages")
-                .select("*");
-              if (pkgRows && pkgRows.length > 0) {
-                referencePackages = pkgRows.map(toMatchedPackage);
-              }
+              const catalog = await loadPackageCatalog(supabase);
 
               resolvedAudit = runAuditEngine(
                 applyOverridesToBill(raw.ocr, overrides),
                 {
                   auditId: row.id,
                   isSeniorOrPwdOverride: isSenior,
-                  referencePackages,
+                  referencePackages: catalog.packages,
+                  statutoryRule: catalog.statutoryRule,
                   manualStatusOverrides: statusOverridesFrom(overrides),
                 }
               );
@@ -359,7 +369,9 @@ export async function POST(req: NextRequest) {
     // 3. Stream response from Gemini Flash via Vercel AI SDK
     const google = createGoogleGenerativeAI({ apiKey });
     const modelId =
-      process.env.GEMINI_MODEL?.trim() || "gemini-3-flash-preview";
+      process.env.GEMINI_CHAT_MODEL?.trim() ||
+      process.env.GEMINI_MODEL?.trim() ||
+      "gemini-3-flash-preview";
 
     const result = streamText({
       model: google(modelId),

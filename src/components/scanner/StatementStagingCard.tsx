@@ -17,7 +17,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatPHP } from "@/lib/utils";
-import type { PipelineStage, AuditEngineResult } from "@/types/audit";
+import type {
+  PipelineStage,
+  AuditEngineResult,
+  StatutoryDiscountType,
+} from "@/types/audit";
 
 interface StatementStagingCardProps {
   pageCount: number;
@@ -30,6 +34,8 @@ interface StatementStagingCardProps {
   onResetAll: () => void;
   isSeniorOrPwd?: boolean;
   setIsSeniorOrPwd?: (val: boolean) => void;
+  statutoryDiscountType?: StatutoryDiscountType;
+  setStatutoryDiscountType?: (val: StatutoryDiscountType) => void;
   onRunAIOcr?: () => void;
   isAnalyzingOcr?: boolean;
   ocrAuditResult?: AuditEngineResult | null;
@@ -46,10 +52,23 @@ export function StatementStagingCard({
   onResetAll,
   isSeniorOrPwd = false,
   setIsSeniorOrPwd,
+  statutoryDiscountType,
+  setStatutoryDiscountType,
   onRunAIOcr,
   isAnalyzingOcr = false,
   ocrAuditResult = null,
 }: StatementStagingCardProps) {
+  const [localPrivilege, setLocalPrivilege] =
+    React.useState<StatutoryDiscountType>(isSeniorOrPwd ? "senior" : "none");
+
+  const activePrivilege: StatutoryDiscountType =
+    statutoryDiscountType ?? (isSeniorOrPwd ? (localPrivilege === "none" ? "senior" : localPrivilege) : "none");
+
+  const handleSelectPrivilege = (next: StatutoryDiscountType) => {
+    setLocalPrivilege(next);
+    setStatutoryDiscountType?.(next);
+    setIsSeniorOrPwd?.(next !== "none");
+  };
   const isBusy =
     stage === "compressing" ||
     stage === "uploading" ||
@@ -176,26 +195,42 @@ export function StatementStagingCard({
           </div>
         </div>
 
-        {/* Senior / PWD Toggle */}
+        {/* Mutually Exclusive Statutory Privilege Selector (RA 9994 vs RA 10754) */}
         {setIsSeniorOrPwd && (
-          <div className="p-3.5 bg-[#F4F4F5] rounded-2xl border border-[#E5E7EB] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <input
-                type="checkbox"
-                id="senior-pwd-checkbox"
-                checked={isSeniorOrPwd}
-                onChange={(e) => setIsSeniorOrPwd(e.target.checked)}
-                disabled={isBusy}
-                className="w-4 h-4 rounded text-[#2563EB] focus:ring-[#2563EB] border-[#CBD5E1]"
-              />
-              <label
-                htmlFor="senior-pwd-checkbox"
-                className="text-xs font-bold text-[#1E293B] cursor-pointer"
-              >
-                Apply Senior Citizen (60+) or PWD 20% + 12% VAT Audit (RA 9994 / RA 10754)
-              </label>
+          <div className="p-3.5 bg-[#F4F4F5] rounded-2xl border border-[#E5E7EB] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#1E293B]">
+                Statutory Privilege (Mutually Exclusive — No Double-Stacking)
+              </span>
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             </div>
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { id: "none", label: "Regular" },
+                  { id: "senior", label: "Senior Citizen (60+)" },
+                  { id: "pwd", label: "PWD (RA 10754)" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => handleSelectPrivilege(opt.id)}
+                  className={`py-2 px-2.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                    activePrivilege === opt.id
+                      ? "bg-[#2563EB] text-white shadow-xs"
+                      : "bg-white text-[#64748B] border border-[#CBD5E1] hover:text-[#1E293B]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-[#64748B]">
+              Per PhilHealth Advisory 2023-0036 &amp; RA 9994 IRR: 12% VAT
+              exemption + 20% discount are deducted FIRST before PhilHealth.
+            </p>
           </div>
         )}
 
@@ -267,28 +302,45 @@ export function StatementStagingCard({
         />
       </div>
 
-      {/* Senior / PWD Toggle */}
+      {/* Mutually Exclusive Statutory Privilege Selector (RA 9994 vs RA 10754) */}
       {setIsSeniorOrPwd && (
-        <div className="p-3.5 bg-[#F4F4F5] rounded-2xl border border-[#E5E7EB] flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <input
-              type="checkbox"
-              id="pre-senior-pwd-checkbox"
-              checked={isSeniorOrPwd}
-              onChange={(e) => setIsSeniorOrPwd(e.target.checked)}
-              disabled={isBusy}
-              className="w-4 h-4 rounded text-[#2563EB] focus:ring-[#2563EB] border-[#CBD5E1]"
-            />
-            <label
-              htmlFor="pre-senior-pwd-checkbox"
-              className="text-xs font-bold text-[#1E293B] cursor-pointer"
-            >
-              Patient is a Senior Citizen (60+) or PWD
-            </label>
+        <div className="p-3.5 bg-[#F4F4F5] rounded-2xl border border-[#E5E7EB] space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#1E293B]">
+              Patient Statutory Privilege (Choose One — Mutually Exclusive)
+            </span>
+            <span className="text-[10px] font-bold text-[#64748B] uppercase">
+              RA 9994 / RA 10754
+            </span>
           </div>
-          <span className="text-[10px] font-bold text-[#64748B] uppercase">
-            RA 9994 / RA 10754
-          </span>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(
+              [
+                { id: "none", label: "Regular" },
+                { id: "senior", label: "Senior Citizen (60+)" },
+                { id: "pwd", label: "PWD (RA 10754)" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                disabled={isBusy}
+                onClick={() => handleSelectPrivilege(opt.id)}
+                className={`py-2 px-2.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                  activePrivilege === opt.id
+                    ? "bg-[#2563EB] text-white shadow-xs"
+                    : "bg-white text-[#64748B] border border-[#CBD5E1] hover:text-[#1E293B]"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-[#64748B]">
+            A patient who is both a Senior Citizen and PWD may claim one 20%
+            statutory discount (applied BEFORE PhilHealth per Advisory
+            2023-0036).
+          </p>
         </div>
       )}
 

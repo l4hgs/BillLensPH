@@ -4,315 +4,218 @@ import type {
   AuditedLineItem,
   AuditFlag,
   AuditTier,
+  CatalogPackage,
   MatchedCasePackage,
+  StatutoryDiscountType,
+  StatutoryRule,
 } from "@/types/audit";
 import { formatPHP } from "./utils";
+import {
+  bestPackageForDiagnosis,
+  containsPhrase,
+  findMatchingAlias,
+  normalizeText,
+} from "./itemMatcher";
+import {
+  defaultAliasesForCode,
+  selectActivePackagesForDate,
+  toCatalogPackage,
+  toMatchedPackage,
+} from "./packageCatalog";
 
-// Fallback seed packages for matching if database lookup is empty
-const BUILTIN_PACKAGES: MatchedCasePackage[] = [
-  {
-    code: "47562",
-    keyword: "Laparoscopic Cholecystectomy",
-    hci_fee: 23250,
-    prof_fee: 15500,
-    total_rate: 38750,
-    inclusive_items: [
-      "laparoscopic",
-      "trocar",
-      "cannula",
-      "clip",
-      "insufflation",
-      "co2",
-      "camera",
-      "grasper",
-      "dissector",
-      "sterile drape",
-      "surgical gown",
-      "suture",
-      "pacu",
-      "recovery room",
-      "iv fluid",
-      "saline",
-      "lactated ringer",
-    ],
-  },
-  {
-    code: "44970",
-    keyword: "Laparoscopic Appendectomy",
-    hci_fee: 18000,
-    prof_fee: 12000,
-    total_rate: 30000,
-    inclusive_items: [
-      "laparoscopic",
-      "trocar",
-      "camera",
-      "endoloop",
-      "clip",
-      "insufflation",
-      "co2",
-      "pacu",
-      "recovery room",
-      "drape",
-      "cefazolin",
-    ],
-  },
-  {
-    code: "44950",
-    keyword: "Appendectomy (Open)",
-    hci_fee: 14400,
-    prof_fee: 9600,
-    total_rate: 24000,
-    inclusive_items: [
-      "appendectomy",
-      "drape",
-      "suture",
-      "sponge",
-      "laparotomy pad",
-      "scalpel blade",
-      "iv fluid",
-      "pacu",
-    ],
-  },
-  {
-    code: "93458",
-    keyword: "Coronary Angiography",
-    hci_fee: 28500,
-    prof_fee: 19000,
-    total_rate: 47500,
-    inclusive_items: [
-      "sheath",
-      "catheter",
-      "guidewire",
-      "contrast",
-      "iohexol",
-      "iopamidol",
-      "fluoroscopy",
-      "cath lab",
-      "heparin",
-      "compression bandage",
-      "drape",
-    ],
-  },
-  {
-    code: "92920",
-    keyword: "Percutaneous Coronary Intervention (PCI)",
-    hci_fee: 54000,
-    prof_fee: 36000,
-    total_rate: 90000,
-    inclusive_items: [
-      "balloon",
-      "ptca",
-      "guidewire",
-      "indeflator",
-      "inflation device",
-      "guiding catheter",
-      "cath lab",
-      "heparin",
-      "act test",
-      "contrast",
-    ],
-  },
-  {
-    code: "59400",
-    keyword: "Normal Spontaneous Delivery (NSD)",
-    hci_fee: 6500,
-    prof_fee: 3900,
-    total_rate: 10400,
-    inclusive_items: [
-      "delivery room",
-      "labor",
-      "oxytocin",
-      "episiotomy",
-      "lidocaine",
-      "cord clamp",
-      "suction bulb",
-      "vitamin k",
-      "erythromycin",
-      "room and board",
-    ],
-  },
-  {
-    code: "59510",
-    keyword: "Cesarean Section Delivery",
-    hci_fee: 15600,
-    prof_fee: 10400,
-    total_rate: 26000,
-    inclusive_items: [
-      "operating room",
-      "delivery",
-      "spinal needle",
-      "spinal anesthesia",
-      "bupivacaine",
-      "suture",
-      "oxytocin",
-      "methylergometrine",
-      "pacu",
-      "recovery",
-    ],
-  },
-  {
-    code: "90935",
-    keyword: "Hemodialysis Session",
-    hci_fee: 4000,
-    prof_fee: 0,
-    total_rate: 4000,
-    inclusive_items: [
-      "dialyzer",
-      "filter",
-      "tubing line",
-      "dialysate",
-      "fistula needle",
-      "avf",
-      "heparin",
-      "saline flush",
-      "nursing care",
-    ],
-  },
-  {
-    code: "J18.9",
-    keyword: "Community-Acquired Pneumonia (Moderate Risk)",
-    hci_fee: 10500,
-    prof_fee: 4500,
-    total_rate: 15000,
-    inclusive_items: [
-      "room and board",
-      "ward",
-      "chest x-ray",
-      "xray",
-      "cbc",
-      "urinalysis",
-      "ceftriaxone",
-      "ampicillin",
-      "iv cannula",
-      "infusion set",
-      "oxygen",
-      "salbutamol",
-      "nebulization",
-    ],
-  },
-  {
-    code: "A97.1",
-    keyword: "Dengue Fever with Warning Signs",
-    hci_fee: 9100,
-    prof_fee: 3900,
-    total_rate: 13000,
-    inclusive_items: [
-      "room",
-      "cbc",
-      "platelet",
-      "hematocrit",
-      "ns1",
-      "iv fluid",
-      "saline",
-      "lactated ringer",
-      "cannula",
-      "paracetamol",
-      "oral rehydration",
-    ],
-  },
-];
+export { toCatalogPackage, toMatchedPackage };
 
-/** Maps a `philhealth_packages` database row to the shape the engine matches against. */
-export function toMatchedPackage(row: {
-  case_code: string;
-  procedure_keyword: string;
-  hci_fee: number | string | null;
-  prof_fee: number | string | null;
-  total_case_rate: number | string | null;
-  inclusive_items: string[] | null;
-}): MatchedCasePackage {
-  return {
-    code: row.case_code,
-    keyword: row.procedure_keyword,
-    hci_fee: Number(row.hci_fee) || 0,
-    prof_fee: Number(row.prof_fee) || 0,
-    total_rate: Number(row.total_case_rate) || 0,
-    inclusive_items: row.inclusive_items || [],
-  };
-}
+/**
+ * Rule engine for a single bill. Pure function: the PhilHealth package catalog
+ * is passed in (see `packageCatalog.ts`) and nothing here holds peso rates,
+ * so changing a case rate or circular is a data change, not a code change.
+ */
 
 export interface AuditOptions {
   auditId: string;
   isSeniorOrPwdOverride?: boolean;
-  referencePackages?: MatchedCasePackage[];
+  /** Mutually exclusive statutory privilege ('none' | 'senior' | 'pwd' — no double-stacking per RA 9994 IRR). */
+  statutoryDiscountType?: StatutoryDiscountType;
+  /** Packages from the `philhealth_packages` catalog (may omit `aliases` if mapped from UI state). */
+  referencePackages?: Array<CatalogPackage | MatchedCasePackage>;
+  /** Optional parameterized Senior/PWD statutory rule from `statutory_rules`. */
+  statutoryRule?: StatutoryRule;
   /** Per-item tier chosen by the user in the Audit Studio, keyed by line item id. */
   manualStatusOverrides?: Record<string, AuditTier>;
+}
+
+const DEFAULT_STATUTORY_RULE: StatutoryRule = {
+  rule_code: "SENIOR_PWD",
+  label: "Senior Citizen (60+) & PWD Statutory Relief",
+  vat_divisor: 1.12,
+  discount_rate: 0.2,
+  incomplete_threshold: 0.8,
+  eligible_categories: [
+    "Drugs/Medicines",
+    "Medical Supplies",
+    "Laboratory/Diagnostics",
+    "Professional Fees",
+    "Room & Board",
+  ],
+  citation: "RA 9994 / RA 10754",
+};
+
+/** Categories that are never treated as bundled HCI supplies (PF is its own bucket). */
+const NEVER_UNBUNDLED: ReadonlySet<string> = new Set(["Professional Fees"]);
+
+function ensureCatalogPackage(
+  pkg: CatalogPackage | MatchedCasePackage
+): CatalogPackage {
+  if ("aliases" in pkg && Array.isArray(pkg.aliases)) {
+    return pkg;
+  }
+  return {
+    ...pkg,
+    aliases: defaultAliasesForCode(pkg.code),
+  };
+}
+
+/** Drops matcher-only data before a package is stored in audit results. */
+function toPublicPackage(pkg: CatalogPackage): MatchedCasePackage {
+  return {
+    code: pkg.code,
+    keyword: pkg.keyword,
+    total_rate: pkg.total_rate,
+    hci_fee: pkg.hci_fee,
+    prof_fee: pkg.prof_fee,
+    inclusive_items: pkg.inclusive_items,
+    ...(pkg.circular_id ? { circular_id: pkg.circular_id } : {}),
+    ...(pkg.effective_from ? { effective_from: pkg.effective_from } : {}),
+    ...(pkg.effective_to !== undefined
+      ? { effective_to: pkg.effective_to }
+      : {}),
+    ...(pkg.source_url !== undefined ? { source_url: pkg.source_url } : {}),
+  };
+}
+
+/**
+ * Finds the case-rate packages that apply to a bill, in priority order:
+ * explicit case codes, then the diagnosis text, then a line item that names
+ * the procedure or its code.
+ */
+function matchPackages(
+  extracted: ExtractedBillData,
+  catalog: CatalogPackage[]
+): CatalogPackage[] {
+  const matched: CatalogPackage[] = [];
+  const add = (pkg: CatalogPackage) => {
+    if (!matched.some((m) => m.code.toLowerCase() === pkg.code.toLowerCase())) {
+      matched.push(pkg);
+    }
+  };
+
+  for (const code of extracted.case_rate_codes_detected) {
+    const wanted = normalizeText(code);
+    const pkg = catalog.find((p) => normalizeText(p.code) === wanted);
+    if (pkg) add(pkg);
+  }
+  if (matched.length > 0) return matched;
+
+  if (extracted.diagnosis_or_procedure) {
+    const pkg = bestPackageForDiagnosis(
+      extracted.diagnosis_or_procedure,
+      catalog
+    );
+    if (pkg) add(pkg);
+  }
+  if (matched.length > 0) return matched;
+
+  for (const item of extracted.line_items) {
+    for (const pkg of catalog) {
+      if (
+        containsPhrase(item.description, pkg.keyword) ||
+        containsPhrase(item.description, pkg.code)
+      ) {
+        add(pkg);
+      }
+    }
+  }
+  return matched;
 }
 
 export function runAuditEngine(
   extracted: ExtractedBillData,
   options: AuditOptions
 ): AuditEngineResult {
-  const isSeniorOrPwd =
-    options.isSeniorOrPwdOverride ?? Boolean(extracted.is_senior_or_pwd);
+  const resolvedDiscountType: StatutoryDiscountType =
+    options.statutoryDiscountType ??
+    (options.isSeniorOrPwdOverride === false
+      ? "none"
+      : options.isSeniorOrPwdOverride === true
+        ? extracted.statutory_discount_type &&
+          extracted.statutory_discount_type !== "none"
+          ? extracted.statutory_discount_type
+          : "senior"
+        : extracted.statutory_discount_type ??
+          (extracted.is_senior_or_pwd ? "senior" : "none"));
 
-  const availablePackages =
-    options.referencePackages && options.referencePackages.length > 0
-      ? options.referencePackages
-      : BUILTIN_PACKAGES;
+  const isSeniorOrPwd = resolvedDiscountType !== "none";
+  const privilegeLabel =
+    resolvedDiscountType === "pwd"
+      ? "PWD (RA 10754)"
+      : "Senior Citizen (RA 9994)";
+  const escalationAgency =
+    resolvedDiscountType === "pwd"
+      ? "Persons with Disability Affairs Office (PDAO)"
+      : "Office for Senior Citizens Affairs (OSCA)";
 
-  // 1. Identify active PhilHealth case rate packages
-  const matchedPackages: MatchedCasePackage[] = [];
-
-  for (const code of extracted.case_rate_codes_detected) {
-    const pkg = availablePackages.find(
-      (p) => p.code.toLowerCase() === code.toLowerCase()
-    );
-    if (pkg && !matchedPackages.some((m) => m.code === pkg.code)) {
-      matchedPackages.push(pkg);
-    }
-  }
-
-  // Also match by procedure/diagnosis keywords if none matched by code
-  if (matchedPackages.length === 0 && extracted.diagnosis_or_procedure) {
-    const diag = extracted.diagnosis_or_procedure.toLowerCase();
-    for (const pkg of availablePackages) {
-      if (
-        diag.includes(pkg.keyword.toLowerCase()) ||
-        pkg.keyword.toLowerCase().split(" ").some((w) => w.length > 4 && diag.includes(w))
-      ) {
-        matchedPackages.push(pkg);
-        break;
-      }
-    }
-  }
-
-  // Fallback: search line items for prominent surgical/procedure indicators
-  if (matchedPackages.length === 0) {
-    for (const item of extracted.line_items) {
-      const desc = item.description.toLowerCase();
-      for (const pkg of availablePackages) {
-        if (
-          desc.includes(pkg.keyword.toLowerCase()) ||
-          desc.includes(pkg.code.toLowerCase())
-        ) {
-          if (!matchedPackages.some((m) => m.code === pkg.code)) {
-            matchedPackages.push(pkg);
-          }
-        }
-      }
-    }
-  }
+  const statutoryRule = options.statutoryRule ?? DEFAULT_STATUTORY_RULE;
+  const serviceDate = extracted.discharge_date || extracted.admission_date;
+  const normalizedCatalog = (options.referencePackages ?? []).map(
+    ensureCatalogPackage
+  );
+  const catalog = selectActivePackagesForDate(normalizedCatalog, serviceDate);
 
   const flags: AuditFlag[] = [];
+
+  if (catalog.length === 0) {
+    flags.push({
+      type: "compliance_note",
+      severity: "low",
+      title: "PhilHealth package catalog unavailable",
+      description:
+        "No PhilHealth case-rate packages were loaded, so case-rate matching and unbundling checks were skipped. Only Senior/PWD checks were applied.",
+      potential_savings: 0,
+    });
+  }
+
+  // 1. Identify active PhilHealth case rate packages
+  const matchedPackages = matchPackages(extracted, catalog);
+
+  for (const pkg of matchedPackages) {
+    if (pkg.aliases.length === 0) {
+      flags.push({
+        type: "compliance_note",
+        severity: "low",
+        title: `No matching terms for ${pkg.keyword} (${pkg.code})`,
+        description: `Package ${pkg.code} has no item aliases in the catalog, so bundled-supply checks were skipped for it.`,
+        potential_savings: 0,
+      });
+    }
+  }
+
   let disputedOverchargeTotal = 0;
   let estimatedSeniorSavings = 0;
+  let hasLineLevelSequenceFlag = false;
 
   // 2. Audit every line item
   const auditedItems: AuditedLineItem[] = extracted.line_items.map((item) => {
-    // A user-chosen tier of "covered" or "out_of_pocket" is final: it bypasses
-    // the rule engine, so no overcharge or discount is counted for the item.
     const manualStatus = options.manualStatusOverrides?.[item.id];
     if (manualStatus === "covered" || manualStatus === "out_of_pocket") {
       return {
         ...item,
         status: manualStatus,
         is_manual_override: true,
-        flag_reason: "Tier set manually; automatic checks skipped for this item.",
+        flag_reason:
+          "Tier set manually; automatic checks skipped for this item.",
       };
     }
 
-    const descLower = item.description.toLowerCase();
     let status: AuditedLineItem["status"] = "out_of_pocket";
     let flagReason: string | undefined;
     let matchedPkgCode: string | undefined;
@@ -322,83 +225,125 @@ export function runAuditEngine(
     let suggestedDeduction: number | undefined;
 
     // Check A: Fully covered or zero remaining balance
-    const itemBalance = item.balance ?? (item.total_amount - (item.philhealth_deducted || 0) - (item.discount_applied || 0));
-    if (itemBalance <= 0 || (item.philhealth_deducted && item.philhealth_deducted >= item.total_amount)) {
-      status = "covered";
-      return {
-        ...item,
-        status,
-      };
+    const itemBalance =
+      item.balance ??
+      Math.max(
+        0,
+        item.total_amount -
+          (item.philhealth_deducted || 0) -
+          (item.discount_applied || 0)
+      );
+    if (
+      itemBalance <= 0 ||
+      (item.philhealth_deducted &&
+        item.philhealth_deducted >= item.total_amount)
+    ) {
+      return { ...item, status: "covered" };
     }
 
     // Check B: Anti-Unbundling against matched PhilHealth packages
-    for (const pkg of matchedPackages) {
-      const isInclusiveItem = pkg.inclusive_items.some((inc) => {
-        const incLower = inc.toLowerCase();
-        return (
-          descLower.includes(incLower) ||
-          incLower.split(" ").some((word) => word.length > 4 && descLower.includes(word))
-        );
-      });
+    if (!NEVER_UNBUNDLED.has(item.category) && itemBalance > 0) {
+      for (const pkg of matchedPackages) {
+        const alias = findMatchingAlias(item.description, pkg.aliases);
+        if (!alias) continue;
 
-      if (isInclusiveItem && item.total_amount > 0) {
         status = "review_worthy";
         isUnbundled = true;
         matchedPkgCode = pkg.code;
         matchedPkgName = pkg.keyword;
-        flagReason = `Hospital charged ${formatPHP(item.total_amount)} for "${item.description}", which is a mandatory inclusive item under PhilHealth Case Rate ${pkg.code} (${pkg.keyword}).`;
-        suggestedDeduction = item.total_amount;
-        disputedOverchargeTotal += item.total_amount;
+        flagReason = `Hospital charged ${formatPHP(itemBalance)} out-of-pocket for "${item.description}", which is a mandatory inclusive item under PhilHealth Case Rate ${pkg.code} (${pkg.keyword}).`;
+        suggestedDeduction = itemBalance;
+        disputedOverchargeTotal += itemBalance;
 
         flags.push({
           type: "unbundled_charge",
           severity: "high",
           title: `Potential Unbundled Charge: ${item.description}`,
           description: flagReason,
-          potential_savings: item.total_amount,
+          potential_savings: itemBalance,
           item_id: item.id,
         });
         break;
       }
     }
 
-    // Check C: Statutory Senior Citizen / PWD Discount (RA 9994 / RA 10754)
-    // Applies to: Drugs/Medicines, Medical Supplies, Laboratory/Diagnostics, Professional Fees, Room & Board
+    // Check C: Statutory Senior Citizen / PWD Discount & Mandatory Sequence
+    // Under PhilHealth Advisory No. 2023-0036 and RA 9994 / RA 10754:
+    //   1. 12% VAT Exemption is deducted FIRST from gross VAT-inclusive charges (unless already VAT-exempt).
+    //   2. 20% Senior/PWD Discount is applied NEXT to the VAT-exempt amount.
+    //   3. PhilHealth Case Rate benefit is deducted LAST from the remaining balance.
     if (!isUnbundled && isSeniorOrPwd) {
-      const eligibleCategories = [
-        "Drugs/Medicines",
-        "Medical Supplies",
-        "Laboratory/Diagnostics",
-        "Professional Fees",
-        "Room & Board",
-      ];
-
-      if (eligibleCategories.includes(item.category)) {
+      if (statutoryRule.eligible_categories.includes(item.category)) {
         statutoryEligible = true;
         const currentDiscount = item.discount_applied || 0;
+        const philhealthOnItem = item.philhealth_deducted || 0;
+        const alreadyVatExempt =
+          Boolean(item.is_vat_exempt) ||
+          /\bvat[-\s]?exempt\b/i.test(item.description);
 
-        // Philippine Statutory Rule:
-        // VAT Exempt = Price / 1.12
-        // Senior/PWD Discount = VAT Exempt * 0.20
-        // Effective discount on VAT-inclusive total = ~28.57%
-        const expectedVatExempt = item.total_amount / 1.12;
-        const expectedDiscount = expectedVatExempt * 0.20;
-        const totalExpectedRelief = (item.total_amount - expectedVatExempt) + expectedDiscount;
+        const expectedVatExempt = alreadyVatExempt
+          ? item.total_amount
+          : item.total_amount / statutoryRule.vat_divisor;
+        const vatSaved = Math.max(0, item.total_amount - expectedVatExempt);
+        const expectedDiscount =
+          expectedVatExempt * statutoryRule.discount_rate;
+        const fullStatutoryRelief = vatSaved + expectedDiscount;
 
-        if (currentDiscount < expectedDiscount * 0.8) {
+        // Statutory relief cannot exceed the remaining charge after PhilHealth
+        const maxPossibleRelief = Math.min(
+          fullStatutoryRelief,
+          Math.max(0, item.total_amount - philhealthOnItem)
+        );
+        const discountPct = Math.round(statutoryRule.discount_rate * 100);
+
+        // Detect Reversed Deduction Sequence ("PhilHealth First" violation):
+        // Hospital applied a discount (> 0) AND deducted PhilHealth (> 0), but computed
+        // the 20% discount AFTER subtracting PhilHealth instead of BEFORE.
+        if (
+          philhealthOnItem > 0 &&
+          currentDiscount > 0 &&
+          currentDiscount < maxPossibleRelief - 1
+        ) {
           status = "review_worthy";
-          const missedRelief = Math.max(0, totalExpectedRelief - currentDiscount);
+          hasLineLevelSequenceFlag = true;
+          const sequenceOvercharge = Math.max(
+            0,
+            maxPossibleRelief - currentDiscount
+          );
+          suggestedDeduction = (suggestedDeduction || 0) + sequenceOvercharge;
+          estimatedSeniorSavings += sequenceOvercharge;
+
+          const sequenceReason = `Hospital deducted PhilHealth (${formatPHP(philhealthOnItem)}) BEFORE computing the ${discountPct}% ${privilegeLabel} discount on "${item.description}", unlawfully reducing your statutory relief by ${formatPHP(sequenceOvercharge)}. Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${statutoryRule.citation}, the 12% VAT exemption and ${discountPct}% discount must be deducted from gross charges FIRST, and PhilHealth deducted LAST.`;
+          flagReason = flagReason
+            ? `${flagReason} ${sequenceReason}`
+            : sequenceReason;
+
+          flags.push({
+            type: "wrong_deduction_sequence",
+            severity: "high",
+            title: `Wrong Deduction Sequence: ${item.description}`,
+            description: `${sequenceReason} If the billing office refuses to recompute before discharge, report to your LGU ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).`,
+            potential_savings: sequenceOvercharge,
+            item_id: item.id,
+          });
+        } else if (
+          currentDiscount <
+          expectedDiscount * statutoryRule.incomplete_threshold
+        ) {
+          status = "review_worthy";
+          const missedRelief = Math.max(0, maxPossibleRelief - currentDiscount);
           suggestedDeduction = (suggestedDeduction || 0) + missedRelief;
           estimatedSeniorSavings += missedRelief;
+          const vatNote = alreadyVatExempt ? "(VAT-exempt item)" : "+ 12% VAT exemption";
           flagReason = flagReason
-            ? `${flagReason} Also missing statutory Senior/PWD 20% discount + VAT exemption (potential relief: ${formatPHP(missedRelief)}).`
-            : `Missing or incomplete statutory Senior/PWD 20% discount + 12% VAT exemption (potential relief: ${formatPHP(missedRelief)}).`;
+            ? `${flagReason} Also missing statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} (potential relief: ${formatPHP(missedRelief)}).`
+            : `Missing or incomplete statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} under ${statutoryRule.citation} (potential relief: ${formatPHP(missedRelief)}).`;
 
           flags.push({
             type: "missing_statutory_discount",
             severity: "medium",
             title: `Missing Senior/PWD Relief: ${item.description}`,
-            description: `Eligible for RA 9994/RA 10754 statutory discount. Expected savings: ${formatPHP(missedRelief)}.`,
+            description: `Eligible for ${statutoryRule.citation} statutory discount (deducted prior to PhilHealth per Advisory 2023-0036). Expected savings: ${formatPHP(missedRelief)}.`,
             potential_savings: missedRelief,
             item_id: item.id,
           });
@@ -406,13 +351,6 @@ export function runAuditEngine(
       }
     }
 
-    // Check D: If not unbundled and no statutory dispute, it remains out-of-pocket
-    if (status === "out_of_pocket") {
-      // General out of pocket
-    }
-
-    // Manual "flag for review" from the Audit Studio: keep any rule-based
-    // findings, but make sure the item is surfaced as review-worthy.
     let isManual = false;
     if (manualStatus === "review_worthy" && status !== "review_worthy") {
       status = "review_worthy";
@@ -433,27 +371,119 @@ export function runAuditEngine(
     };
   });
 
-  // Calculate high-level financial totals
+  // 2b. Statement-Summary Level Reversed Deduction Sequence Check:
+  //     When a hospital applies Senior/PWD discount and PhilHealth as lump sums in the SOA footer
+  //     (e.g., Gross ₱112,000 -> VAT-Exempt ₱100,000 -> -PhilHealth ₱20,000 -> -20% Discount ₱16,000 = ₱64,000 due
+  //      instead of the legal ₱60,000 due, creating a ₱4,000 overcharge).
+  if (
+    isSeniorOrPwd &&
+    !hasLineLevelSequenceFlag &&
+    extracted.philhealth_total > 0 &&
+    extracted.senior_pwd_discount_total > 0
+  ) {
+    const summaryVatExempt = extracted.gross_total / statutoryRule.vat_divisor;
+    const legalVatAndDiscount =
+      extracted.gross_total -
+      summaryVatExempt +
+      summaryVatExempt * statutoryRule.discount_rate;
+    const legalNetPayable = Math.max(
+      0,
+      extracted.gross_total - legalVatAndDiscount - extracted.philhealth_total
+    );
+
+    if (extracted.net_balance_due > legalNetPayable + 1) {
+      const summaryOvercharge = Math.max(
+        0,
+        extracted.net_balance_due - legalNetPayable
+      );
+      const additionalSavings = Math.max(
+        0,
+        summaryOvercharge - estimatedSeniorSavings
+      );
+      estimatedSeniorSavings += additionalSavings;
+
+      flags.unshift({
+        type: "wrong_deduction_sequence",
+        severity: "high",
+        title: `Statutory Violation: PhilHealth Deducted Before ${privilegeLabel} Discount`,
+        description: `Statement summary shows PhilHealth (${formatPHP(extracted.philhealth_total)}) was subtracted prior to computing the ${Math.round(statutoryRule.discount_rate * 100)}% ${privilegeLabel} discount, inflating your net payable to ${formatPHP(extracted.net_balance_due)} instead of ${formatPHP(legalNetPayable)} (overcharge of ${formatPHP(summaryOvercharge)}). Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${statutoryRule.citation}, the 12% VAT exemption and 20% discount must be applied FIRST across HCI and Professional Fees before deducting PhilHealth. Report unresolved violations to ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).`,
+        potential_savings: summaryOvercharge,
+      });
+    }
+  }
+
+  // 3. Separate HCI Fee vs PF Share Cap Verification & Fair Out-of-Pocket Math
   const grossTotal = extracted.gross_total;
   const actualOutOfPocket = extracted.net_balance_due;
-  const totalDisputable = disputedOverchargeTotal + estimatedSeniorSavings;
-  const fairOutOfPocket = Math.max(0, actualOutOfPocket - totalDisputable);
 
+  const totalHciCap = matchedPackages.reduce((sum, p) => sum + p.hci_fee, 0);
+  const totalPfCap = matchedPackages.reduce((sum, p) => sum + p.prof_fee, 0);
   const totalPhilHealthRate = matchedPackages.reduce(
     (sum, p) => sum + p.total_rate,
     0
   );
 
-  // General Compliance Flags
-  if (matchedPackages.length > 0 && extracted.philhealth_total < totalPhilHealthRate * 0.9) {
-    flags.unshift({
-      type: "excess_hci_charge",
-      severity: "high",
-      title: "Under-Deducted PhilHealth Case Rate",
-      description: `Hospital deducted ${formatPHP(extracted.philhealth_total)}, but the official PhilHealth Circular rate for ${matchedPackages.map((p) => `${p.keyword} (${p.code})`).join(", ")} is ${formatPHP(totalPhilHealthRate)}. Verify Claim Form 2 with the billing department.`,
-      potential_savings: Math.max(0, totalPhilHealthRate - extracted.philhealth_total),
-    });
+  const lineLevelHciDeducted = extracted.line_items
+    .filter((i) => i.category !== "Professional Fees")
+    .reduce((sum, i) => sum + (i.philhealth_deducted || 0), 0);
+  const lineLevelPfDeducted = extracted.line_items
+    .filter((i) => i.category === "Professional Fees")
+    .reduce((sum, i) => sum + (i.philhealth_deducted || 0), 0);
+  const hasLineLevelSplit = lineLevelHciDeducted + lineLevelPfDeducted > 0;
+
+  let caseRateShortfall = 0;
+
+  if (matchedPackages.length > 0) {
+    if (hasLineLevelSplit) {
+      const hciShortfall = Math.max(0, totalHciCap - lineLevelHciDeducted);
+      const pfShortfall = Math.max(0, totalPfCap - lineLevelPfDeducted);
+
+      if (
+        hciShortfall > 0 &&
+        lineLevelHciDeducted < totalHciCap * 0.9 &&
+        extracted.philhealth_total < totalPhilHealthRate * 0.9
+      ) {
+        caseRateShortfall += hciShortfall;
+        flags.unshift({
+          type: "excess_hci_charge",
+          severity: "high",
+          title: "Under-Deducted PhilHealth HCI Facility Fee",
+          description: `Hospital deducted ${formatPHP(lineLevelHciDeducted)} for the Health Care Institution (HCI) portion, but the case rate HCI allocation for ${matchedPackages.map((p) => `${p.keyword} (${p.code})`).join(", ")} is ${formatPHP(totalHciCap)}.`,
+          potential_savings: hciShortfall,
+        });
+      }
+
+      if (
+        pfShortfall > 0 &&
+        lineLevelPfDeducted < totalPfCap * 0.9 &&
+        extracted.philhealth_total < totalPhilHealthRate * 0.9
+      ) {
+        caseRateShortfall += pfShortfall;
+        flags.unshift({
+          type: "excess_hci_charge",
+          severity: "high",
+          title: "Under-Deducted PhilHealth Professional Fee (PF) Share",
+          description: `Hospital deducted ${formatPHP(lineLevelPfDeducted)} for the Doctor's Professional Fee (PF) portion, but the case rate PF allocation for ${matchedPackages.map((p) => `${p.keyword} (${p.code})`).join(", ")} is ${formatPHP(totalPfCap)}.`,
+          potential_savings: pfShortfall,
+        });
+      }
+    } else if (extracted.philhealth_total < totalPhilHealthRate * 0.9) {
+      caseRateShortfall = Math.max(
+        0,
+        totalPhilHealthRate - extracted.philhealth_total
+      );
+      flags.unshift({
+        type: "excess_hci_charge",
+        severity: "high",
+        title: "Under-Deducted PhilHealth Case Rate",
+        description: `Hospital deducted ${formatPHP(extracted.philhealth_total)}, but the official PhilHealth Circular rate for ${matchedPackages.map((p) => `${p.keyword} (${p.code})`).join(", ")} is ${formatPHP(totalPhilHealthRate)} (HCI: ${formatPHP(totalHciCap)} | PF: ${formatPHP(totalPfCap)}). Verify Claim Form 2 with the billing department.`,
+        potential_savings: caseRateShortfall,
+      });
+    }
   }
+
+  const totalDisputable = disputedOverchargeTotal + estimatedSeniorSavings;
+  const fairOutOfPocket = Math.max(0, actualOutOfPocket - totalDisputable);
 
   // Generate Negotiation Brief Summary
   let negotiationBrief = `AUDIT REPORT SUMMARY for Statement #${extracted.statement_number || "N/A"}\n`;
@@ -466,12 +496,13 @@ export function runAuditEngine(
 
   if (disputedOverchargeTotal > 0) {
     negotiationBrief += `⚠️ UNBUNDLED HOSPITAL CHARGES FLAGGED: ${formatPHP(disputedOverchargeTotal)}\n`;
-    negotiationBrief += `Under PhilHealth All-Case-Rates (Circular 2024-0001/0037), standard surgical/medical consumables are inclusive to the facility fee.\n\n`;
+    negotiationBrief += `Under PhilHealth All-Case-Rates, mandatory surgical/medical consumables are inclusive to the facility fee.\n\n`;
   }
 
   if (estimatedSeniorSavings > 0) {
-    negotiationBrief += `⚠️ STATUTORY SENIOR/PWD RELIEF DISCREPANCY: ${formatPHP(estimatedSeniorSavings)}\n`;
-    negotiationBrief += `Applicable under Republic Act No. 9994 & 10754.\n\n`;
+    negotiationBrief += `⚠️ STATUTORY ${privilegeLabel.toUpperCase()} RELIEF DISCREPANCY: ${formatPHP(estimatedSeniorSavings)}\n`;
+    negotiationBrief += `Applicable under ${statutoryRule.citation}, PhilHealth Advisory No. 2023-0036, and PhilHealth Circular 0056-2012 (12% VAT exemption and 20% discount must be deducted from gross charges FIRST, before subtracting PhilHealth).\n`;
+    negotiationBrief += `Escalation Path: Local LGU ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).\n\n`;
   }
 
   negotiationBrief += `ADJUSTED FAIR BALANCE DUE: ${formatPHP(fairOutOfPocket)}\n`;
@@ -488,7 +519,8 @@ export function runAuditEngine(
     disputed_overcharge_total: disputedOverchargeTotal,
     philhealth_coverage_total: extracted.philhealth_total || totalPhilHealthRate,
     senior_pwd_savings: estimatedSeniorSavings,
-    detected_case_packages: matchedPackages,
+    statutory_discount_type: resolvedDiscountType,
+    detected_case_packages: matchedPackages.map(toPublicPackage),
     line_items: auditedItems,
     flags,
     negotiation_brief_summary: negotiationBrief,

@@ -365,19 +365,26 @@ export default function ScannerPage() {
 
       if (stagedAuditId) {
         payload.auditId = stagedAuditId;
-      } else if (pages[0]?.result?.file) {
-        const file = pages[0].result.file;
-        const arrayBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = "";
-        bytes.forEach((b) => {
-          binary += String.fromCharCode(b);
-        });
-        const base64 = btoa(binary);
+      } else if (pages.length > 0) {
+        const encodedPages: Array<{ imageBase64: string; mimeType: string }> =
+          [];
+        for (const page of pages) {
+          const file = page.result?.file;
+          if (!file) continue;
+          const arrayBuffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = "";
+          bytes.forEach((b) => {
+            binary += String.fromCharCode(b);
+          });
+          encodedPages.push({
+            imageBase64: btoa(binary),
+            mimeType: file.type || "image/jpeg",
+          });
+        }
         payload = {
           ...payload,
-          imageBase64: base64,
-          mimeType: file.type || "image/jpeg",
+          pages: encodedPages,
         };
       }
 

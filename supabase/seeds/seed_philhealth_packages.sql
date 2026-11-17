@@ -4,16 +4,31 @@
 -- and 2026 Maternal/Surgical Rationalization Circulars.
 -- ==============================================================================
 
--- 1. Ensure case_code has a UNIQUE constraint for idempotent upserts
+-- 1. Ensure versioning columns & (case_code, effective_from) unique constraint exist for idempotent upserts
+ALTER TABLE public.philhealth_packages
+  ADD COLUMN IF NOT EXISTS circular_id TEXT NOT NULL DEFAULT '2024-0037',
+  ADD COLUMN IF NOT EXISTS effective_from DATE NOT NULL DEFAULT '2024-10-01',
+  ADD COLUMN IF NOT EXISTS effective_to DATE,
+  ADD COLUMN IF NOT EXISTS source_url TEXT;
+
 DO $$ 
 BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'philhealth_packages_case_code_key'
+  ) THEN
+    ALTER TABLE public.philhealth_packages
+      DROP CONSTRAINT philhealth_packages_case_code_key;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 
     FROM pg_constraint 
-    WHERE conname = 'philhealth_packages_case_code_key'
+    WHERE conname = 'philhealth_packages_case_code_effective_from_key'
   ) THEN
     ALTER TABLE public.philhealth_packages 
-      ADD CONSTRAINT philhealth_packages_case_code_key UNIQUE (case_code);
+      ADD CONSTRAINT philhealth_packages_case_code_effective_from_key UNIQUE (case_code, effective_from);
   END IF;
 END $$;
 
@@ -369,7 +384,7 @@ VALUES
     ]
   )
 
-ON CONFLICT (case_code) DO UPDATE SET
+ON CONFLICT (case_code, effective_from) DO UPDATE SET
   procedure_keyword = EXCLUDED.procedure_keyword,
   hci_fee = EXCLUDED.hci_fee,
   prof_fee = EXCLUDED.prof_fee,

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { extractBillWithGemini } from "@/lib/gemini";
-import { runAuditEngine, toMatchedPackage } from "@/lib/auditEngine";
-import type { MatchedCasePackage } from "@/types/audit";
+import {
+  extractMultiPageBillWithGemini,
+  type GeminiVisionOptions,
+} from "@/lib/gemini";
+import { runAuditEngine } from "@/lib/auditEngine";
+import { loadPackageCatalog } from "@/lib/packageCatalog";
+import { ensureBillPackagesInCatalog } from "@/lib/caseRateDiscovery";
 import type { Json } from "@/lib/supabase/database.types";
 
 export const maxDuration = 60; // Allow sufficient time for multimodal AI processing
@@ -13,13 +17,24 @@ interface StagedFileRecord {
   original_name?: string;
 }
 
+interface InlinePagePayload {
+  imageBase64: string;
+  mimeType?: string;
+}
+
+function inferMimeType(filePath: string, explicitMime?: string): string {
+  if (explicitMime) return explicitMime;
+  if (filePath.endsWith(".png")) return "image/png";
+  if (filePath.endsWith(".webp")) return "image/webp";
+  if (filePath.endsWith(".pdf")) return "application/pdf";
+  return "image/jpeg";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { auditId, imageBase64, mimeType, isSeniorOrPwd } = body;
+    const { auditId, imageBase64, mimeType, pages, isSeniorOrPwd } = body;
 
-    let base64Payload = imageBase64;
-    let finalMimeType = mimeType || "image/jpeg";
     const targetAuditId = auditId || `audit-${Date.now()}`;
     let existingRaw: Record<string, Json | undefined> = {};
 
@@ -28,8 +43,41 @@ export async function POST(req: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // 1. If auditId is provided but no imageBase64, retrieve file from Supabase storage
-    if (auditId && !base64Payload) {
+    // 1. Load the PhilHealth package catalog from Supabase first.
+    //    If the catalog is empty or unreachable, fail fast with a clear error
+    //    instead of silently falling back to hardcoded rates.
+    const catalog = await loadPackageCatalog(supabase);
+    if (catalog.error || catalog.packages.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            catalog.error ||
+            "The PhilHealth package catalog is empty. Please seed philhealth_packages before running OCR.",
+        },
+        { status: 503 }
+      );
+    }
+
+    // 2. Collect all page payloads (inline `pages[]`, inline `imageBase64`, or all staged files in Supabase Storage)
+    const pageInputs: GeminiVisionOptions[] = [];
+
+    if (Array.isArray(pages) && pages.length > 0) {
+      for (const p of pages as InlinePagePayload[]) {
+        if (p && typeof p.imageBase64 === "string" && p.imageBase64.trim()) {
+          pageInputs.push({
+            base64Data: p.imageBase64,
+            mimeType: p.mimeType || "image/jpeg",
+          });
+        }
+      }
+    } else if (typeof imageBase64 === "string" && imageBase64.trim()) {
+      pageInputs.push({
+        base64Data: imageBase64,
+        mimeType: mimeType || "image/jpeg",
+      });
+    }
+
+    if (auditId && pageInputs.length === 0) {
       const { data: auditRecord, error: auditFetchErr } = await supabase
         .from("audits")
         .select("*")
@@ -38,90 +86,104 @@ export async function POST(req: NextRequest) {
 
       if (auditFetchErr || !auditRecord) {
         return NextResponse.json(
-          { error: `Audit record not found: ${auditFetchErr?.message || "Invalid ID"}` },
+          {
+            error: `Audit record not found: ${auditFetchErr?.message || "Invalid ID"}`,
+          },
           { status: 404 }
         );
       }
 
-      // The scanner stages uploads as `files` (metadata) and `storage_paths`.
+      existingRaw = (auditRecord.raw_extracted_data ?? {}) as Record<
+        string,
+        Json | undefined
+      >;
+
       const rawMeta = auditRecord.raw_extracted_data as {
         files?: StagedFileRecord[];
         storage_paths?: string[];
       } | null;
 
-      const stagedFile = rawMeta?.files?.[0];
-      const filePath = stagedFile?.path || rawMeta?.storage_paths?.[0];
+      const stagedFiles: StagedFileRecord[] =
+        Array.isArray(rawMeta?.files) && rawMeta.files.length > 0
+          ? rawMeta.files
+          : Array.isArray(rawMeta?.storage_paths)
+            ? rawMeta.storage_paths.map((p) => ({ path: p }))
+            : [];
 
-      if (!filePath) {
+      if (stagedFiles.length === 0) {
         return NextResponse.json(
-          { error: "No staged file path found in this audit record." },
+          { error: "No staged file paths found in this audit record." },
           { status: 400 }
         );
       }
 
-      existingRaw = (auditRecord.raw_extracted_data ?? {}) as Record<string, Json | undefined>;
+      // Download EVERY staged page in order so multi-page SOAs never drop pages 2..N
+      for (const staged of stagedFiles) {
+        if (!staged.path) continue;
+        const { data: fileBlob, error: downloadErr } = await supabase.storage
+          .from("bill-uploads")
+          .download(staged.path);
 
-      finalMimeType =
-        stagedFile?.mime_type ||
-        (filePath.endsWith(".png")
-          ? "image/png"
-          : filePath.endsWith(".pdf")
-          ? "application/pdf"
-          : "image/jpeg");
+        if (downloadErr || !fileBlob) {
+          return NextResponse.json(
+            {
+              error: `Failed to download staged file "${staged.path}" from storage: ${downloadErr?.message}`,
+            },
+            { status: 500 }
+          );
+        }
 
-      // Download file from private `bill-uploads` bucket
-      const { data: fileBlob, error: downloadErr } = await supabase.storage
-        .from("bill-uploads")
-        .download(filePath);
-
-      if (downloadErr || !fileBlob) {
-        return NextResponse.json(
-          { error: `Failed to download file from storage: ${downloadErr?.message}` },
-          { status: 500 }
-        );
+        const arrayBuffer = await fileBlob.arrayBuffer();
+        pageInputs.push({
+          base64Data: Buffer.from(arrayBuffer).toString("base64"),
+          mimeType: inferMimeType(staged.path, staged.mime_type),
+        });
       }
-
-      const arrayBuffer = await fileBlob.arrayBuffer();
-      base64Payload = Buffer.from(arrayBuffer).toString("base64");
+    } else if (auditId) {
+      // Preserve existing raw_extracted_data metadata when auditId is passed alongside inline pages
+      const { data: auditRecord } = await supabase
+        .from("audits")
+        .select("raw_extracted_data")
+        .eq("id", auditId)
+        .maybeSingle();
+      if (auditRecord?.raw_extracted_data) {
+        existingRaw = auditRecord.raw_extracted_data as Record<
+          string,
+          Json | undefined
+        >;
+      }
     }
 
-    if (!base64Payload) {
+    if (pageInputs.length === 0) {
       return NextResponse.json(
-        { error: "Missing required bill image (either auditId with staged file or imageBase64)." },
+        {
+          error:
+            "Missing required bill image (provide auditId with staged files, pages[], or imageBase64).",
+        },
         { status: 400 }
       );
     }
 
-    // 2. Run Gemini Flash Vision OCR
-    const extractedData = await extractBillWithGemini({
-      base64Data: base64Payload,
-      mimeType: finalMimeType,
-    });
+    // 3. Run Gemini Flash Vision OCR across all pages and merge
+    const extractedData = await extractMultiPageBillWithGemini(pageInputs);
 
-    // 3. Fetch reference PhilHealth packages from database for matching
-    let referencePackages: MatchedCasePackage[] = [];
-    try {
-      const { data: dbPackages } = await supabase
-        .from("philhealth_packages")
-        .select("*");
-
-      if (dbPackages && dbPackages.length > 0) {
-        referencePackages = dbPackages.map(toMatchedPackage);
-      }
-    } catch {
-      // Fallback in auditEngine handles empty referencePackages
-    }
+    // 3b. Auto-discover and cache missing PhilHealth Case Rate packages via Gemini
+    //     when the bill's diagnosis or RVS/ICD-10 code is not yet in the DB catalog
+    const { packages: effectivePackages } = await ensureBillPackagesInCatalog(
+      supabase,
+      extractedData,
+      catalog.packages
+    );
 
     // 4. Run Automated PhilHealth & Statutory Audit Engine
     const auditResult = runAuditEngine(extractedData, {
       auditId: targetAuditId,
       isSeniorOrPwdOverride: isSeniorOrPwd,
-      referencePackages,
+      referencePackages: effectivePackages,
+      statutoryRule: catalog.statutoryRule,
     });
 
-    // 5. Persist results. Staged-file metadata is preserved (the Studio needs it
-    //    to re-analyze) and the pristine OCR output is kept under `ocr`, so user
-    //    overrides can always be reset to what the AI originally read.
+    // 5. Persist results
     if (auditId && user) {
       const { error: updateErr } = await supabase
         .from("audits")
@@ -132,6 +194,7 @@ export async function POST(req: NextRequest) {
           raw_extracted_data: {
             ...existingRaw,
             status: "ocr_complete",
+            page_count: pageInputs.length,
             is_senior_or_pwd: Boolean(isSeniorOrPwd),
             ocr: extractedData as unknown as Json,
             overrides: {},
@@ -141,19 +204,24 @@ export async function POST(req: NextRequest) {
         .eq("id", auditId);
 
       if (updateErr) {
-        console.warn("Could not update audit record in database:", updateErr.message);
+        console.warn(
+          "Could not update audit record in database:",
+          updateErr.message
+        );
       }
     }
 
     return NextResponse.json({
       success: true,
       auditId: targetAuditId,
+      pageCount: pageInputs.length,
       extracted: extractedData,
       audit: auditResult,
     });
   } catch (err: unknown) {
     console.error("OCR Audit API Route error:", err);
-    const message = err instanceof Error ? err.message : "Internal OCR processing error.";
+    const message =
+      err instanceof Error ? err.message : "Internal OCR processing error.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

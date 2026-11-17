@@ -69,6 +69,10 @@ export type Database = {
           prof_fee: number;
           total_case_rate: number;
           inclusive_items: string[];
+          circular_id?: string;
+          effective_from?: string;
+          effective_to?: string | null;
+          source_url?: string | null;
         };
         Insert: {
           id?: string;
@@ -78,6 +82,10 @@ export type Database = {
           prof_fee?: number;
           total_case_rate?: number;
           inclusive_items?: string[];
+          circular_id?: string;
+          effective_from?: string;
+          effective_to?: string | null;
+          source_url?: string | null;
         };
         Update: {
           id?: string;
@@ -87,8 +95,86 @@ export type Database = {
           prof_fee?: number;
           total_case_rate?: number;
           inclusive_items?: string[];
+          circular_id?: string;
+          effective_from?: string;
+          effective_to?: string | null;
+          source_url?: string | null;
         };
         Relationships: [];
+      };
+      statutory_rules: {
+        Row: {
+          id: string;
+          rule_code: string;
+          label: string;
+          vat_divisor: number;
+          discount_rate: number;
+          incomplete_threshold: number;
+          eligible_categories: string[];
+          citation: string;
+          effective_from: string;
+          effective_to: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          rule_code: string;
+          label: string;
+          vat_divisor?: number;
+          discount_rate?: number;
+          incomplete_threshold?: number;
+          eligible_categories?: string[];
+          citation?: string;
+          effective_from?: string;
+          effective_to?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          rule_code?: string;
+          label?: string;
+          vat_divisor?: number;
+          discount_rate?: number;
+          incomplete_threshold?: number;
+          eligible_categories?: string[];
+          citation?: string;
+          effective_from?: string;
+          effective_to?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      package_item_aliases: {
+        Row: {
+          id: string;
+          package_id: string;
+          alias: string;
+          kind: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          package_id: string;
+          alias: string;
+          kind?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          package_id?: string;
+          alias?: string;
+          kind?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "package_item_aliases_package_id_fkey";
+            columns: ["package_id"];
+            isOneToOne: false;
+            referencedRelation: "philhealth_packages";
+            referencedColumns: ["id"];
+          }
+        ];
       };
     };
     Views: {

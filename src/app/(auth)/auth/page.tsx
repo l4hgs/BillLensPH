@@ -30,7 +30,19 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [oauthLoading, setOauthLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const errParam = params.get("error");
+      const msgParam = params.get("message") || params.get("error_description");
+      if (errParam || msgParam) {
+        return msgParam
+          ? `Authentication failed: ${msgParam}`
+          : `Authentication failed (${errParam}). Please check your Supabase API key and Redirect URLs.`;
+      }
+    }
+    return null;
+  });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -63,19 +75,6 @@ export default function AuthPage() {
         if (isMounted) {
           setCheckingSession(false);
         }
-      }
-    }
-
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const errParam = params.get("error");
-      const msgParam = params.get("message") || params.get("error_description");
-      if (errParam || msgParam) {
-        setErrorMessage(
-          msgParam
-            ? `Authentication failed: ${msgParam}`
-            : `Authentication failed (${errParam}). Please check your Supabase API key and Redirect URLs.`
-        );
       }
     }
 

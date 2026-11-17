@@ -107,7 +107,7 @@ export function buildPlainTextNegotiationBrief(
     "   • PhilHealth All Case Rates (ACR) Policy: Mandatory operating room, delivery room, and ward supplies, diagnostic tests, and bundled drugs included in the Health Care Institution (HCI) fee should not be billed separately as out-of-pocket charges.",
     ...(meta.isSeniorOrPwd || audit.senior_pwd_savings > 0
       ? [
-          "   • RA 9994 (Expanded Senior Citizens Act) / RA 10754 (PWD Act): Entitles the patient to a 12% VAT exemption and a mandatory 20% discount on net medical, hospital, diagnostic, medicine, and professional fees.",
+          "   • RA 9994 (Expanded Senior Citizens Act) / RA 10754 (PWD Act), PhilHealth Advisory No. 2023-0036 & PhilHealth Circular 0056-2012: Entitles the patient to a 12% VAT exemption FIRST, followed by a mandatory 20% discount on the VAT-exempt balance across HCI and Professional Fees, with PhilHealth Case Rate benefits deducted LAST. Unresolved violations may be escalated to LGU OSCA/PDAO or the PhilHealth Callback Channel (0917-898-7442).",
         ]
       : []),
     "   • RA 11463 (Malasakit Centers Act): Please issue an updated, certified Statement of Account reflecting reconciled PhilHealth and statutory deductions to support our Medical Social Service / Malasakit / DSWD / PCSO guarantee letter endorsement.",
@@ -467,14 +467,20 @@ export function NegotiationBriefDocument({
           {(meta.isSeniorOrPwd || audit.senior_pwd_savings > 0) && (
             <li>
               <strong>
-                Republic Act No. 9994 (Expanded Senior Citizens Act) &amp; RA
-                10754 (PWD Act):
+                Republic Act No. 9994 (Expanded Senior Citizens Act), RA 10754
+                (PWD Act), PhilHealth Advisory No. 2023-0036 &amp; PhilHealth
+                Circular 0056-2012:
               </strong>{" "}
               Entitles qualified Senior Citizen and PWD patients to a{" "}
-              <strong>12% Value-Added Tax (VAT) exemption</strong> and a
-              mandatory <strong>20% discount</strong> on net hospital charges,
-              room and board, diagnostic and laboratory tests, medicines, and
-              attending physicians&apos; professional fees.
+              <strong>12% Value-Added Tax (VAT) exemption FIRST</strong>,
+              followed by a mandatory <strong>20% discount</strong> on the
+              VAT-exempt balance across hospital (HCI) charges, diagnostic tests,
+              medicines, and physicians&apos; professional fees (PF), with{" "}
+              <strong>PhilHealth Case Rate benefits deducted LAST</strong>. Any
+              refusal to apply the sequential discount prior to discharge may be
+              reported to the local LGU{" "}
+              <strong>OSCA / PDAO</strong> or the{" "}
+              <strong>PhilHealth Callback Channel (0917-898-7442)</strong>.
             </li>
           )}
           <li>

@@ -21,7 +21,8 @@ import {
 import { AuditCopilotDrawer } from "@/components/audit/AuditCopilotDrawer";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
-import { runAuditEngine, toMatchedPackage } from "@/lib/auditEngine";
+import { runAuditEngine } from "@/lib/auditEngine";
+import { loadPackageCatalog } from "@/lib/packageCatalog";
 import {
   applyOverridesToBill,
   statusOverridesFrom,
@@ -29,8 +30,9 @@ import {
 import { getSampleBillById } from "@/lib/sampleAudits";
 import type {
   AuditOverrides,
+  CatalogPackage,
   ExtractedBillData,
-  MatchedCasePackage,
+  StatutoryRule,
 } from "@/types/audit";
 
 type LoadState = "loading" | "ready" | "not_found" | "error";
@@ -60,7 +62,10 @@ export default function NegotiationBriefPage({
   const [ocr, setOcr] = useState<ExtractedBillData | null>(null);
   const [overrides, setOverrides] = useState<AuditOverrides>({});
   const [isSenior, setIsSenior] = useState(false);
-  const [packages, setPackages] = useState<MatchedCasePackage[]>([]);
+  const [packages, setPackages] = useState<CatalogPackage[]>([]);
+  const [statutoryRule, setStatutoryRule] = useState<StatutoryRule | undefined>(
+    undefined
+  );
 
   // Customizable signatory metadata for the formal brief
   const [representativeName, setRepresentativeName] = useState("");
@@ -88,9 +93,7 @@ export default function NegotiationBriefPage({
       // 1. Check built-in sample statements first (doc-1 .. doc-5)
       const sampleBill = getSampleBillById(id);
       if (sampleBill) {
-        const { data: pkgRows } = await supabase
-          .from("philhealth_packages")
-          .select("*");
+        const catalog = await loadPackageCatalog(supabase);
         if (cancelled) return;
         let sampleOverrides: AuditOverrides = {};
         let sampleSenior = Boolean(sampleBill.is_senior_or_pwd);
@@ -113,7 +116,8 @@ export default function NegotiationBriefPage({
         setOverrides(sampleOverrides);
         setIsSenior(sampleSenior);
         setRepresentativeName(sampleBill.patient_name || "");
-        setPackages((pkgRows ?? []).map(toMatchedPackage));
+        setPackages(catalog.packages);
+        setStatutoryRule(catalog.statutoryRule);
         setLoadState("ready");
         return;
       }
@@ -149,9 +153,7 @@ export default function NegotiationBriefPage({
           ? raw.is_senior_or_pwd
           : Boolean(loadedOcr?.is_senior_or_pwd);
 
-      const { data: pkgRows } = await supabase
-        .from("philhealth_packages")
-        .select("*");
+      const catalog = await loadPackageCatalog(supabase);
 
       if (cancelled) return;
 
@@ -159,7 +161,8 @@ export default function NegotiationBriefPage({
       setOverrides(loadedOverrides);
       setIsSenior(loadedSenior);
       setRepresentativeName(loadedOcr?.patient_name || "");
-      setPackages((pkgRows ?? []).map(toMatchedPackage));
+      setPackages(catalog.packages);
+      setStatutoryRule(catalog.statutoryRule);
       setLoadState("ready");
     })();
 
@@ -174,9 +177,10 @@ export default function NegotiationBriefPage({
       auditId: id,
       isSeniorOrPwdOverride: isSenior,
       referencePackages: packages,
+      statutoryRule,
       manualStatusOverrides: statusOverridesFrom(overrides),
     });
-  }, [ocr, overrides, isSenior, packages, id]);
+  }, [ocr, overrides, isSenior, packages, statutoryRule, id]);
 
   const briefMeta: NegotiationBriefMeta = useMemo(
     () => ({
