@@ -1,4 +1,59 @@
-import type { ExtractedBillData, ExtractedLineItem } from "@/types/audit";
+import type {
+  ExtractedBillData,
+  ExtractedLineItem,
+  StatutoryDiscountType,
+} from "@/types/audit";
+
+/**
+ * Shared fallback order of fast Gemini Flash models used across Vision OCR,
+ * PhilHealth case rate discovery, and Copilot chat.
+ */
+export const GEMINI_FLASH_MODELS = [
+  "gemini-3-flash-preview",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-3.8-flash",
+  "gemini-flash-latest",
+] as const;
+
+export function getGeminiModelFallbackList(preferredModel?: string): string[] {
+  const configured =
+    preferredModel?.trim() || process.env.GEMINI_MODEL?.trim();
+  return Array.from(
+    new Set([
+      ...(configured ? [configured] : []),
+      ...GEMINI_FLASH_MODELS,
+    ])
+  );
+}
+
+/**
+ * Detects whether a line item description indicates VAT-exempt status
+ * (e.g., `[VX]`, `(VX)`, `VAT-Exempt`, `Non-VAT`, `Zero-Rated`, or statutory
+ * TRAIN/CREATE VAT-exempt maintenance drugs for hypertension, diabetes,
+ * high cholesterol, kidney disease/dialysis, cancer, TB).
+ */
+export function detectVatExemptFromDescription(description: string): boolean {
+  if (!description) return false;
+  if (
+    /\b(vat[-\s]?exempt|non[-\s]?vat|zero[-\s]?rated|0%\s*vat)\b/i.test(
+      description
+    )
+  ) {
+    return true;
+  }
+  if (/(?:^|[\s([{-])vx(?:$|[\s)\]}.,;-])/i.test(description)) {
+    return true;
+  }
+  if (
+    /\b(losartan|amlodipine|metoprolol|telmisartan|valsartan|metformin|glimepiride|gliclazide|sitagliptin|empagliflozin|dapagliflozin|insulin|atorvastatin|rosuvastatin|simvastatin|epoetin|erythropoietin|dialysate|bicarbonate\s+dialysate|rifampicin|isoniazid|pyrazinamide|ethambutol|tamoxifen|letrozole)\b/i.test(
+      description
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
 
 const SYSTEM_PROMPT = `
 You are the BillLens PH Medical Billing Vision Engine, specialized in parsing Philippine Hospital Itemized Statements of Account (ISAs), Statements of Account (SOAs), and PhilHealth Claim Forms (CF2/CF3).
@@ -17,9 +72,11 @@ PHILIPPINE BILLING CONVENTIONS TO DETECT:
    - Operating Room / Delivery Room fees
    - Professional Fees (Attending physician, surgeon, anesthesiologist)
    - Miscellaneous / Administrative fees
-4. Deductions and Subsidies:
+4. Line-Level VAT Exemption (\`is_vat_exempt\`):
+   - Set \`"is_vat_exempt": true\` when a line item has a \`VX\`, \`VAT-Exempt\`, \`Non-VAT\`, \`NV\`, or \`0% VAT\` marker, when its VAT column is 0.00, or when it is a statutory VAT-exempt medicine/supply under TRAIN/CREATE Law (RA 10963 / RA 11534, such as maintenance medicines for hypertension, diabetes, high cholesterol, kidney disease/dialysis, cancer, or tuberculosis). Otherwise set \`"is_vat_exempt": false\`.
+5. Deductions and Subsidies:
    - PhilHealth benefit deduction (HCI fee portion, PF portion)
-   - Senior Citizen / PWD 20% discount and 12% VAT exemption if noted
+   - Senior Citizen (RA 9994) / PWD (RA 10754) 20% discount and 12% VAT exemption if noted (set \`statutory_discount_type\` to \`"senior"\`, \`"pwd"\`, or \`"regular"\`)
    - HMO / Health insurance coverage (Maxicare, Intellicare, Medicard, PhilCare, etc.)
    - Net balance due / out-of-pocket remaining
 
@@ -34,6 +91,7 @@ Respond with ONLY valid JSON (no markdown formatting, no code fences, just the r
   "case_rate_codes_detected": ["String"],
   "diagnosis_or_procedure": "String or null",
   "is_senior_or_pwd": boolean,
+  "statutory_discount_type": "regular" | "senior" | "pwd",
   "line_items": [
     {
       "id": "item-1",
@@ -44,7 +102,8 @@ Respond with ONLY valid JSON (no markdown formatting, no code fences, just the r
       "total_amount": number,
       "philhealth_deducted": number,
       "discount_applied": number,
-      "balance": number
+      "balance": number,
+      "is_vat_exempt": boolean
     }
   ],
   "gross_total": number,
@@ -70,24 +129,13 @@ export async function extractBillWithGemini(
     );
   }
 
-  // Prioritize the latest fast Gemini 3 & 3.5 Flash models (plus optional GEMINI_MODEL override)
-  const configuredModel = process.env.GEMINI_MODEL?.trim();
-  const models = Array.from(
-    new Set([
-      ...(configuredModel ? [configuredModel] : []),
-      "gemini-3-flash-preview",
-      "gemini-3.5-flash",
-      "gemini-3.1-flash-lite-preview",
-      "gemini-3.8-flash",
-      "gemini-flash-latest",
-    ])
-  );
+  const models = getGeminiModelFallbackList();
   let lastError: Error | null = null;
   let firstNon404Error: Error | null = null;
 
   for (const model of models) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
       const payload = {
         contents: [
@@ -116,6 +164,7 @@ export async function extractBillWithGemini(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
         },
         body: JSON.stringify(payload),
       });
@@ -219,9 +268,11 @@ export function mergeExtractedBills(
   let patientName: string | undefined;
   let admissionDate: string | undefined;
   let dischargeDate: string | undefined;
+  let statementDate: string | undefined;
   let statementNumber: string | undefined;
   let diagnosisOrProcedure: string | undefined;
   let isSeniorOrPwd = false;
+  let statutoryDiscountType: StatutoryDiscountType = "regular";
 
   pages.forEach((page, pageIndex) => {
     const pageNum = pageIndex + 1;
@@ -237,12 +288,22 @@ export function mergeExtractedBills(
       admissionDate = page.admission_date;
     if (!dischargeDate && page.discharge_date)
       dischargeDate = page.discharge_date;
+    if (!statementDate && page.statement_date)
+      statementDate = page.statement_date;
     if (!statementNumber && page.statement_number)
       statementNumber = page.statement_number;
     if (!diagnosisOrProcedure && page.diagnosis_or_procedure) {
       diagnosisOrProcedure = page.diagnosis_or_procedure;
     }
     if (page.is_senior_or_pwd) isSeniorOrPwd = true;
+    if (
+      statutoryDiscountType === "regular" &&
+      (page.statutory_discount_type === "senior" ||
+        page.statutory_discount_type === "pwd")
+    ) {
+      statutoryDiscountType = page.statutory_discount_type;
+      isSeniorOrPwd = true;
+    }
 
     for (const code of page.case_rate_codes_detected) {
       const trimmed = code.trim();
@@ -257,9 +318,16 @@ export function mergeExtractedBills(
       mergedItems.push({
         ...item,
         id: itemId,
+        is_vat_exempt:
+          Boolean(item.is_vat_exempt) ||
+          detectVatExemptFromDescription(item.description),
       });
     });
   });
+
+  if (statutoryDiscountType === "regular" && isSeniorOrPwd) {
+    statutoryDiscountType = "senior";
+  }
 
   const combinedItemsGross = mergedItems.reduce(
     (sum, item) => sum + item.total_amount,
@@ -311,10 +379,12 @@ export function mergeExtractedBills(
     patient_name: patientName,
     admission_date: admissionDate,
     discharge_date: dischargeDate,
+    ...(statementDate ? { statement_date: statementDate } : {}),
     statement_number: statementNumber,
     case_rate_codes_detected: Array.from(codeSet),
     diagnosis_or_procedure: diagnosisOrProcedure,
     is_senior_or_pwd: isSeniorOrPwd,
+    statutory_discount_type: statutoryDiscountType,
     line_items: mergedItems,
     gross_total: grossTotal,
     philhealth_total: philhealthTotal,
@@ -323,48 +393,85 @@ export function mergeExtractedBills(
   };
 }
 
-function sanitizeExtractedBill(data: Partial<ExtractedBillData>): ExtractedBillData {
+export function sanitizeExtractedBill(
+  data: Partial<ExtractedBillData>
+): ExtractedBillData {
   const lineItems: ExtractedLineItem[] = Array.isArray(data.line_items)
-    ? data.line_items.map((item, index) => ({
-        // Ids are index-based (never model-supplied) so they are always unique;
-        // Audit Studio overrides are keyed by this id.
-        id: `item-${index + 1}`,
-        description: String(item.description || "Unspecified Medical Charge").trim(),
-        category: sanitizeCategory(item.category),
-        quantity: Math.max(1, Number(item.quantity) || 1),
-        unit_price: Number(item.unit_price) || Number(item.total_amount) || 0,
-        total_amount: Number(item.total_amount) || 0,
-        philhealth_deducted: Number(item.philhealth_deducted) || 0,
-        discount_applied: Number(item.discount_applied) || 0,
-        balance:
-          item.balance !== null &&
-          item.balance !== undefined &&
-          Number.isFinite(Number(item.balance))
-            ? Number(item.balance)
-            : Math.max(
-                0,
-                (Number(item.total_amount) || 0) -
-                  (Number(item.philhealth_deducted) || 0) -
-                  (Number(item.discount_applied) || 0)
-              ),
-      }))
+    ? data.line_items.map((item, index) => {
+        const description = String(
+          item.description || "Unspecified Medical Charge"
+        ).trim();
+        return {
+          // Ids are index-based (never model-supplied) so they are always unique;
+          // Audit Studio overrides are keyed by this id.
+          id: `item-${index + 1}`,
+          description,
+          category: sanitizeCategory(item.category),
+          quantity: Math.max(1, Number(item.quantity) || 1),
+          unit_price: Number(item.unit_price) || Number(item.total_amount) || 0,
+          total_amount: Number(item.total_amount) || 0,
+          philhealth_deducted: Number(item.philhealth_deducted) || 0,
+          discount_applied: Number(item.discount_applied) || 0,
+          balance:
+            item.balance !== null &&
+            item.balance !== undefined &&
+            Number.isFinite(Number(item.balance))
+              ? Number(item.balance)
+              : Math.max(
+                  0,
+                  (Number(item.total_amount) || 0) -
+                    (Number(item.philhealth_deducted) || 0) -
+                    (Number(item.discount_applied) || 0)
+                ),
+          is_vat_exempt:
+            Boolean(item.is_vat_exempt) ||
+            detectVatExemptFromDescription(description),
+        };
+      })
     : [];
 
-  const computedGross = lineItems.reduce((acc, curr) => acc + curr.total_amount, 0);
+  const computedGross = lineItems.reduce(
+    (acc, curr) => acc + curr.total_amount,
+    0
+  );
+
+  const rawDiscountType = String(data.statutory_discount_type || "").toLowerCase();
+  const statutoryDiscountType: StatutoryDiscountType =
+    rawDiscountType === "pwd"
+      ? "pwd"
+      : rawDiscountType === "senior"
+        ? "senior"
+        : data.is_senior_or_pwd
+          ? "senior"
+          : "regular";
 
   return {
-    hospital_name: String(data.hospital_name || "Philippine Healthcare Institution").trim(),
-    patient_name: data.patient_name ? String(data.patient_name).trim() : undefined,
-    admission_date: data.admission_date ? String(data.admission_date) : undefined,
-    discharge_date: data.discharge_date ? String(data.discharge_date) : undefined,
-    statement_number: data.statement_number ? String(data.statement_number) : undefined,
+    hospital_name: String(
+      data.hospital_name || "Philippine Healthcare Institution"
+    ).trim(),
+    patient_name: data.patient_name
+      ? String(data.patient_name).trim()
+      : undefined,
+    admission_date: data.admission_date
+      ? String(data.admission_date)
+      : undefined,
+    discharge_date: data.discharge_date
+      ? String(data.discharge_date)
+      : undefined,
+    ...(data.statement_date
+      ? { statement_date: String(data.statement_date) }
+      : {}),
+    statement_number: data.statement_number
+      ? String(data.statement_number)
+      : undefined,
     case_rate_codes_detected: Array.isArray(data.case_rate_codes_detected)
       ? data.case_rate_codes_detected.map(String)
       : [],
     diagnosis_or_procedure: data.diagnosis_or_procedure
       ? String(data.diagnosis_or_procedure)
       : undefined,
-    is_senior_or_pwd: Boolean(data.is_senior_or_pwd),
+    is_senior_or_pwd: statutoryDiscountType !== "regular",
+    statutory_discount_type: statutoryDiscountType,
     line_items: lineItems,
     gross_total: Number(data.gross_total) || computedGross,
     philhealth_total: Number(data.philhealth_total) || 0,

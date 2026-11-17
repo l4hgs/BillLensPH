@@ -49,7 +49,37 @@ export interface AuditDoc {
 
 export type AuditTier = "covered" | "review_worthy" | "out_of_pocket";
 
-export type StatutoryDiscountType = "none" | "senior" | "pwd";
+export type StatutoryDiscountType = "regular" | "senior" | "pwd";
+
+export type PhilHealthContributorType =
+  | "direct"
+  | "indirect_nbb"
+  | "lifetime"
+  | "unknown";
+
+export type AccommodationType =
+  | "basic_ward"
+  | "non_basic_private"
+  | "unknown";
+
+export type FacilityLevel =
+  | "level_1"
+  | "level_2"
+  | "level_3"
+  | "asc"
+  | "unknown";
+
+/**
+ * Per-audit PhilHealth Member Eligibility & Ward Accommodation snapshot
+ * used to evaluate No Balance Billing (NBB) / Zero Co-Payment rules
+ * (PhilHealth Circular 2016-0020 & RA 11223) and MDR/PIN readiness.
+ */
+export interface EligibilitySnapshot {
+  contributor_type: PhilHealthContributorType;
+  accommodation_type: AccommodationType;
+  has_mdr_or_pin: boolean;
+  facility_level: FacilityLevel;
+}
 
 export interface ExtractedLineItem {
   id: string;
@@ -107,9 +137,11 @@ export interface ExtractedBillData {
   patient_name?: string;
   admission_date?: string;
   discharge_date?: string;
+  statement_date?: string;
   statement_number?: string;
   case_rate_codes_detected: string[];
   diagnosis_or_procedure?: string;
+  primary_diagnosis?: string;
   line_items: ExtractedLineItem[];
   gross_total: number;
   philhealth_total: number;
@@ -118,6 +150,8 @@ export interface ExtractedBillData {
   is_senior_or_pwd?: boolean;
   /** Mutually exclusive statutory privilege (RA 9994 Senior Citizen vs RA 10754 PWD; no double-stacking). */
   statutory_discount_type?: StatutoryDiscountType;
+  /** Optional PhilHealth membership & accommodation snapshot captured at scan/audit time. */
+  eligibility_snapshot?: EligibilitySnapshot;
 }
 
 export interface AuditFlag {
@@ -126,6 +160,7 @@ export interface AuditFlag {
     | "missing_statutory_discount"
     | "wrong_deduction_sequence"
     | "excess_hci_charge"
+    | "nbb_violation"
     | "compliance_note";
   severity: "high" | "medium" | "low";
   title: string;
@@ -146,6 +181,8 @@ export interface MatchedCasePackage {
   effective_from?: string;
   effective_to?: string | null;
   source_url?: string | null;
+  /** False when the package was auto-discovered by AI rather than verified from an official PhilHealth circular. */
+  is_verified?: boolean;
 }
 
 /**
@@ -176,6 +213,8 @@ export interface StatutoryRule {
   incomplete_threshold: number;
   eligible_categories: ExtractedLineItem["category"][];
   citation: string;
+  effective_from?: string;
+  effective_to?: string | null;
 }
 
 export interface AuditEngineResult {
@@ -187,9 +226,12 @@ export interface AuditEngineResult {
   actual_out_of_pocket: number;
   fair_out_of_pocket: number;
   disputed_overcharge_total: number;
+  case_rate_shortfall?: number;
+  nbb_savings?: number;
   philhealth_coverage_total: number;
   senior_pwd_savings: number;
-  statutory_discount_type?: StatutoryDiscountType;
+  statutory_discount_type: StatutoryDiscountType;
+  eligibility_snapshot?: EligibilitySnapshot;
   detected_case_packages: MatchedCasePackage[];
   line_items: AuditedLineItem[];
   flags: AuditFlag[];

@@ -4,10 +4,18 @@ import {
   extractMultiPageBillWithGemini,
   type GeminiVisionOptions,
 } from "@/lib/gemini";
-import { runAuditEngine } from "@/lib/auditEngine";
+import {
+  normalizeEligibilitySnapshot,
+  normalizeStatutoryDiscountType,
+  runAuditEngine,
+} from "@/lib/auditEngine";
 import { loadPackageCatalog } from "@/lib/packageCatalog";
 import { ensureBillPackagesInCatalog } from "@/lib/caseRateDiscovery";
 import type { Json } from "@/lib/supabase/database.types";
+import type {
+  EligibilitySnapshot,
+  StatutoryDiscountType,
+} from "@/types/audit";
 
 export const maxDuration = 60; // Allow sufficient time for multimodal AI processing
 
@@ -33,7 +41,15 @@ function inferMimeType(filePath: string, explicitMime?: string): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { auditId, imageBase64, mimeType, pages, isSeniorOrPwd } = body;
+    const {
+      auditId,
+      imageBase64,
+      mimeType,
+      pages,
+      isSeniorOrPwd,
+      statutoryDiscountType,
+      eligibilitySnapshot,
+    } = body;
 
     const targetAuditId = auditId || `audit-${Date.now()}`;
     let existingRaw: Record<string, Json | undefined> = {};
@@ -176,32 +192,79 @@ export async function POST(req: NextRequest) {
     );
 
     // 4. Run Automated PhilHealth & Statutory Audit Engine
+    const explicitType: StatutoryDiscountType | undefined =
+      statutoryDiscountType !== undefined
+        ? normalizeStatutoryDiscountType(statutoryDiscountType)
+        : existingRaw.statutory_discount_type !== undefined
+          ? normalizeStatutoryDiscountType(existingRaw.statutory_discount_type)
+          : typeof isSeniorOrPwd === "boolean"
+            ? isSeniorOrPwd
+              ? extractedData.statutory_discount_type === "pwd"
+                ? "pwd"
+                : "senior"
+              : "regular"
+            : typeof existingRaw.is_senior_or_pwd === "boolean"
+              ? existingRaw.is_senior_or_pwd
+                ? extractedData.statutory_discount_type === "pwd"
+                  ? "pwd"
+                  : "senior"
+                : "regular"
+              : undefined;
+
+    const resolvedEligibility: EligibilitySnapshot =
+      normalizeEligibilitySnapshot(
+        eligibilitySnapshot ??
+          existingRaw.eligibility_snapshot ??
+          extractedData.eligibility_snapshot
+      );
+
     const auditResult = runAuditEngine(extractedData, {
       auditId: targetAuditId,
-      isSeniorOrPwdOverride: isSeniorOrPwd,
+      statutoryDiscountType: explicitType,
+      isSeniorOrPwdOverride:
+        typeof isSeniorOrPwd === "boolean" ? isSeniorOrPwd : undefined,
+      eligibilitySnapshot: resolvedEligibility,
       referencePackages: effectivePackages,
       statutoryRule: catalog.statutoryRule,
+      statutoryRules: catalog.statutoryRules,
     });
 
     // 5. Persist results
     if (auditId && user) {
-      const { error: updateErr } = await supabase
+      const updatedRaw = {
+        ...existingRaw,
+        status: "ocr_complete",
+        page_count: pageInputs.length,
+        statutory_discount_type: auditResult.statutory_discount_type,
+        is_senior_or_pwd: auditResult.statutory_discount_type !== "regular",
+        eligibility_snapshot: resolvedEligibility as unknown as Json,
+        ocr: extractedData as unknown as Json,
+        overrides: {},
+      };
+
+      const fullUpdatePayload = {
+        hospital_name: auditResult.hospital_name,
+        total_billed: auditResult.gross_total,
+        estimated_out_of_pocket: auditResult.fair_out_of_pocket,
+        eligibility_snapshot: resolvedEligibility as unknown as Json,
+        raw_extracted_data: updatedRaw,
+        audit_results: auditResult as unknown as Json,
+      };
+
+      let { error: updateErr } = await supabase
         .from("audits")
-        .update({
-          hospital_name: auditResult.hospital_name,
-          total_billed: auditResult.gross_total,
-          estimated_out_of_pocket: auditResult.fair_out_of_pocket,
-          raw_extracted_data: {
-            ...existingRaw,
-            status: "ocr_complete",
-            page_count: pageInputs.length,
-            is_senior_or_pwd: Boolean(isSeniorOrPwd),
-            ocr: extractedData as unknown as Json,
-            overrides: {},
-          },
-          audit_results: auditResult as unknown as Json,
-        })
+        .update(fullUpdatePayload)
         .eq("id", auditId);
+
+      if (updateErr && /eligibility_snapshot/i.test(updateErr.message)) {
+        const fallbackPayload = { ...fullUpdatePayload };
+        delete (fallbackPayload as Record<string, unknown>).eligibility_snapshot;
+        const retry = await supabase
+          .from("audits")
+          .update(fallbackPayload)
+          .eq("id", auditId);
+        updateErr = retry.error;
+      }
 
       if (updateErr) {
         console.warn(

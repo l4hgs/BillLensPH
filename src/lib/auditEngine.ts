@@ -1,15 +1,20 @@
 import type {
+  AccommodationType,
   ExtractedBillData,
   AuditEngineResult,
   AuditedLineItem,
   AuditFlag,
   AuditTier,
   CatalogPackage,
+  EligibilitySnapshot,
+  FacilityLevel,
   MatchedCasePackage,
+  PhilHealthContributorType,
   StatutoryDiscountType,
   StatutoryRule,
 } from "@/types/audit";
 import { formatPHP } from "./utils";
+import { detectVatExemptFromDescription } from "./gemini";
 import {
   bestPackageForDiagnosis,
   containsPhrase,
@@ -19,11 +24,90 @@ import {
 import {
   defaultAliasesForCode,
   selectActivePackagesForDate,
+  selectStatutoryRuleForDate,
   toCatalogPackage,
   toMatchedPackage,
 } from "./packageCatalog";
 
 export { toCatalogPackage, toMatchedPackage };
+
+export function normalizeStatutoryDiscountType(
+  value?: unknown,
+  fallbackIsSeniorOrPwd?: boolean
+): StatutoryDiscountType {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "pwd") return "pwd";
+    if (normalized === "senior") return "senior";
+    if (normalized === "regular" || normalized === "none") return "regular";
+  }
+  if (typeof fallbackIsSeniorOrPwd === "boolean") {
+    return fallbackIsSeniorOrPwd ? "senior" : "regular";
+  }
+  return "regular";
+}
+
+export const DEFAULT_ELIGIBILITY_SNAPSHOT: EligibilitySnapshot = {
+  contributor_type: "unknown",
+  accommodation_type: "unknown",
+  has_mdr_or_pin: true,
+  facility_level: "unknown",
+};
+
+export function normalizeEligibilitySnapshot(
+  raw?: unknown
+): EligibilitySnapshot {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_ELIGIBILITY_SNAPSHOT };
+  }
+  const rec = raw as Record<string, unknown>;
+
+  const validContributor: PhilHealthContributorType[] = [
+    "direct",
+    "indirect_nbb",
+    "lifetime",
+    "unknown",
+  ];
+  const contributor_type: PhilHealthContributorType =
+    typeof rec.contributor_type === "string" &&
+    validContributor.includes(rec.contributor_type as PhilHealthContributorType)
+      ? (rec.contributor_type as PhilHealthContributorType)
+      : "unknown";
+
+  const validAccommodation: AccommodationType[] = [
+    "basic_ward",
+    "non_basic_private",
+    "unknown",
+  ];
+  const accommodation_type: AccommodationType =
+    typeof rec.accommodation_type === "string" &&
+    validAccommodation.includes(rec.accommodation_type as AccommodationType)
+      ? (rec.accommodation_type as AccommodationType)
+      : "unknown";
+
+  const has_mdr_or_pin =
+    typeof rec.has_mdr_or_pin === "boolean" ? rec.has_mdr_or_pin : true;
+
+  const validFacility: FacilityLevel[] = [
+    "level_1",
+    "level_2",
+    "level_3",
+    "asc",
+    "unknown",
+  ];
+  const facility_level: FacilityLevel =
+    typeof rec.facility_level === "string" &&
+    validFacility.includes(rec.facility_level as FacilityLevel)
+      ? (rec.facility_level as FacilityLevel)
+      : "unknown";
+
+  return {
+    contributor_type,
+    accommodation_type,
+    has_mdr_or_pin,
+    facility_level,
+  };
+}
 
 /**
  * Rule engine for a single bill. Pure function: the PhilHealth package catalog
@@ -34,12 +118,16 @@ export { toCatalogPackage, toMatchedPackage };
 export interface AuditOptions {
   auditId: string;
   isSeniorOrPwdOverride?: boolean;
-  /** Mutually exclusive statutory privilege ('none' | 'senior' | 'pwd' — no double-stacking per RA 9994 IRR). */
+  /** Mutually exclusive statutory privilege ('regular' | 'senior' | 'pwd' — no double-stacking per RA 9994 IRR). */
   statutoryDiscountType?: StatutoryDiscountType;
   /** Packages from the `philhealth_packages` catalog (may omit `aliases` if mapped from UI state). */
   referencePackages?: Array<CatalogPackage | MatchedCasePackage>;
   /** Optional parameterized Senior/PWD statutory rule from `statutory_rules`. */
   statutoryRule?: StatutoryRule;
+  /** Optional list of versioned `statutory_rules` rows to date-select by the bill's statement/discharge date. */
+  statutoryRules?: StatutoryRule[];
+  /** Optional PhilHealth Member Eligibility & Ward Accommodation snapshot (Migration 007). */
+  eligibilitySnapshot?: Partial<EligibilitySnapshot> | null;
   /** Per-item tier chosen by the user in the Audit Studio, keyed by line item id. */
   manualStatusOverrides?: Record<string, AuditTier>;
 }
@@ -77,6 +165,10 @@ function ensureCatalogPackage(
 
 /** Drops matcher-only data before a package is stored in audit results. */
 function toPublicPackage(pkg: CatalogPackage): MatchedCasePackage {
+  const isVerified =
+    typeof pkg.is_verified === "boolean"
+      ? pkg.is_verified
+      : !Boolean(pkg.source_url?.startsWith("ai_grounded"));
   return {
     code: pkg.code,
     keyword: pkg.keyword,
@@ -84,6 +176,7 @@ function toPublicPackage(pkg: CatalogPackage): MatchedCasePackage {
     hci_fee: pkg.hci_fee,
     prof_fee: pkg.prof_fee,
     inclusive_items: pkg.inclusive_items,
+    is_verified: isVerified,
     ...(pkg.circular_id ? { circular_id: pkg.circular_id } : {}),
     ...(pkg.effective_from ? { effective_from: pkg.effective_from } : {}),
     ...(pkg.effective_to !== undefined
@@ -142,19 +235,23 @@ export function runAuditEngine(
   extracted: ExtractedBillData,
   options: AuditOptions
 ): AuditEngineResult {
-  const resolvedDiscountType: StatutoryDiscountType =
-    options.statutoryDiscountType ??
-    (options.isSeniorOrPwdOverride === false
-      ? "none"
-      : options.isSeniorOrPwdOverride === true
-        ? extracted.statutory_discount_type &&
-          extracted.statutory_discount_type !== "none"
-          ? extracted.statutory_discount_type
-          : "senior"
-        : extracted.statutory_discount_type ??
-          (extracted.is_senior_or_pwd ? "senior" : "none"));
+  const extractedDiscountType = normalizeStatutoryDiscountType(
+    extracted.statutory_discount_type,
+    extracted.is_senior_or_pwd
+  );
 
-  const isSeniorOrPwd = resolvedDiscountType !== "none";
+  const resolvedDiscountType: StatutoryDiscountType =
+    options.statutoryDiscountType !== undefined
+      ? normalizeStatutoryDiscountType(options.statutoryDiscountType)
+      : options.isSeniorOrPwdOverride === false
+        ? "regular"
+        : options.isSeniorOrPwdOverride === true
+          ? extractedDiscountType !== "regular"
+            ? extractedDiscountType
+            : "senior"
+          : extractedDiscountType;
+
+  const isSeniorOrPwd = resolvedDiscountType !== "regular";
   const privilegeLabel =
     resolvedDiscountType === "pwd"
       ? "PWD (RA 10754)"
@@ -164,8 +261,29 @@ export function runAuditEngine(
       ? "Persons with Disability Affairs Office (PDAO)"
       : "Office for Senior Citizens Affairs (OSCA)";
 
-  const statutoryRule = options.statutoryRule ?? DEFAULT_STATUTORY_RULE;
-  const serviceDate = extracted.discharge_date || extracted.admission_date;
+  const serviceDate =
+    extracted.discharge_date ||
+    extracted.statement_date ||
+    extracted.admission_date;
+
+  const statutoryRule =
+    (options.statutoryRules && options.statutoryRules.length > 0
+      ? selectStatutoryRuleForDate(options.statutoryRules, serviceDate)
+      : undefined) ??
+    options.statutoryRule ??
+    DEFAULT_STATUTORY_RULE;
+
+  const effectiveCitation =
+    resolvedDiscountType === "pwd"
+      ? statutoryRule.citation === "RA 9994 / RA 10754"
+        ? "RA 10754 (Expanded Benefits and Privileges of Persons with Disability) & PDAO Guidelines"
+        : statutoryRule.citation.includes("10754")
+          ? `${statutoryRule.citation} & PDAO Guidelines`
+          : `${statutoryRule.citation} / RA 10754 (PDAO Guidelines)`
+      : statutoryRule.citation === "RA 9994 / RA 10754"
+        ? "RA 9994 (Expanded Senior Citizens Act) & OSCA Guidelines"
+        : statutoryRule.citation;
+
   const normalizedCatalog = (options.referencePackages ?? []).map(
     ensureCatalogPackage
   );
@@ -279,7 +397,7 @@ export function runAuditEngine(
         const philhealthOnItem = item.philhealth_deducted || 0;
         const alreadyVatExempt =
           Boolean(item.is_vat_exempt) ||
-          /\bvat[-\s]?exempt\b/i.test(item.description);
+          detectVatExemptFromDescription(item.description);
 
         const expectedVatExempt = alreadyVatExempt
           ? item.total_amount
@@ -313,7 +431,7 @@ export function runAuditEngine(
           suggestedDeduction = (suggestedDeduction || 0) + sequenceOvercharge;
           estimatedSeniorSavings += sequenceOvercharge;
 
-          const sequenceReason = `Hospital deducted PhilHealth (${formatPHP(philhealthOnItem)}) BEFORE computing the ${discountPct}% ${privilegeLabel} discount on "${item.description}", unlawfully reducing your statutory relief by ${formatPHP(sequenceOvercharge)}. Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${statutoryRule.citation}, the 12% VAT exemption and ${discountPct}% discount must be deducted from gross charges FIRST, and PhilHealth deducted LAST.`;
+          const sequenceReason = `Hospital deducted PhilHealth (${formatPHP(philhealthOnItem)}) BEFORE computing the ${discountPct}% ${privilegeLabel} discount on "${item.description}", unlawfully reducing your statutory relief by ${formatPHP(sequenceOvercharge)}. Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${effectiveCitation}, the 12% VAT exemption and ${discountPct}% discount must be deducted from gross charges FIRST, and PhilHealth deducted LAST.`;
           flagReason = flagReason
             ? `${flagReason} ${sequenceReason}`
             : sequenceReason;
@@ -337,13 +455,13 @@ export function runAuditEngine(
           const vatNote = alreadyVatExempt ? "(VAT-exempt item)" : "+ 12% VAT exemption";
           flagReason = flagReason
             ? `${flagReason} Also missing statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} (potential relief: ${formatPHP(missedRelief)}).`
-            : `Missing or incomplete statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} under ${statutoryRule.citation} (potential relief: ${formatPHP(missedRelief)}).`;
+            : `Missing or incomplete statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} under ${effectiveCitation} (potential relief: ${formatPHP(missedRelief)}).`;
 
           flags.push({
             type: "missing_statutory_discount",
             severity: "medium",
-            title: `Missing Senior/PWD Relief: ${item.description}`,
-            description: `Eligible for ${statutoryRule.citation} statutory discount (deducted prior to PhilHealth per Advisory 2023-0036). Expected savings: ${formatPHP(missedRelief)}.`,
+            title: `Missing ${privilegeLabel} Relief: ${item.description}`,
+            description: `Eligible for ${effectiveCitation} statutory discount (deducted prior to PhilHealth per Advisory 2023-0036; escalate unresolved violations to LGU ${escalationAgency}). Expected savings: ${formatPHP(missedRelief)}.`,
             potential_savings: missedRelief,
             item_id: item.id,
           });
@@ -406,7 +524,7 @@ export function runAuditEngine(
         type: "wrong_deduction_sequence",
         severity: "high",
         title: `Statutory Violation: PhilHealth Deducted Before ${privilegeLabel} Discount`,
-        description: `Statement summary shows PhilHealth (${formatPHP(extracted.philhealth_total)}) was subtracted prior to computing the ${Math.round(statutoryRule.discount_rate * 100)}% ${privilegeLabel} discount, inflating your net payable to ${formatPHP(extracted.net_balance_due)} instead of ${formatPHP(legalNetPayable)} (overcharge of ${formatPHP(summaryOvercharge)}). Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${statutoryRule.citation}, the 12% VAT exemption and 20% discount must be applied FIRST across HCI and Professional Fees before deducting PhilHealth. Report unresolved violations to ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).`,
+        description: `Statement summary shows PhilHealth (${formatPHP(extracted.philhealth_total)}) was subtracted prior to computing the ${Math.round(statutoryRule.discount_rate * 100)}% ${privilegeLabel} discount, inflating your net payable to ${formatPHP(extracted.net_balance_due)} instead of ${formatPHP(legalNetPayable)} (overcharge of ${formatPHP(summaryOvercharge)}). Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${effectiveCitation}, the 12% VAT exemption and 20% discount must be applied FIRST across HCI and Professional Fees before deducting PhilHealth. Report unresolved violations to ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).`,
         potential_savings: summaryOvercharge,
       });
     }
@@ -482,8 +600,88 @@ export function runAuditEngine(
     }
   }
 
-  const totalDisputable = disputedOverchargeTotal + estimatedSeniorSavings;
-  const fairOutOfPocket = Math.max(0, actualOutOfPocket - totalDisputable);
+  // Ensure applied PhilHealth and statutory deductions on the statement are reflected
+  // in the baseline balance before subtracting newly flagged overcharges, statutory
+  // relief gaps, and HCI/PF case rate shortfalls.
+  const effectiveHospitalDue =
+    actualOutOfPocket >= grossTotal &&
+    (extracted.philhealth_total > 0 || extracted.senior_pwd_discount_total > 0)
+      ? Math.max(
+          0,
+          grossTotal -
+            extracted.philhealth_total -
+            extracted.senior_pwd_discount_total
+        )
+      : actualOutOfPocket;
+
+  const eligibilitySnapshot = normalizeEligibilitySnapshot(
+    options.eligibilitySnapshot ?? extracted.eligibility_snapshot
+  );
+
+  const preNbbDisputable =
+    disputedOverchargeTotal + estimatedSeniorSavings + caseRateShortfall;
+  const balanceBeforeNbb = Math.max(0, effectiveHospitalDue - preNbbDisputable);
+
+  // 4. No Balance Billing (NBB) / Zero Co-Payment & MDR Readiness Check
+  //    Under PhilHealth Circular 2016-0020 & RA 11223 (UHC Act), Indirect Contributors
+  //    (Indigent, Sponsored, Kasambahay, Senior Citizens under RA 10645, Solo Parents
+  //    under PC 2026-0015, PWDs under PC 2026-0017), Lifetime Members, and Senior/PWD
+  //    patients admitted in Basic / Ward accommodation are entitled to Zero Co-Payment.
+  const isNbbQualifiedMember =
+    eligibilitySnapshot.contributor_type === "indirect_nbb" ||
+    eligibilitySnapshot.contributor_type === "lifetime" ||
+    isSeniorOrPwd;
+
+  let nbbSavings = 0;
+
+  if (
+    isNbbQualifiedMember &&
+    eligibilitySnapshot.accommodation_type === "basic_ward" &&
+    balanceBeforeNbb > 0
+  ) {
+    nbbSavings = balanceBeforeNbb;
+    const memberCategoryText =
+      eligibilitySnapshot.contributor_type === "indirect_nbb"
+        ? "Indirect / NBB-Sponsored Member (Indigent / Sponsored / Kasambahay / Senior RA 10645 / Solo Parent PC 2026-0015 / PWD PC 2026-0017)"
+        : eligibilitySnapshot.contributor_type === "lifetime"
+          ? "PhilHealth Lifetime Member"
+          : privilegeLabel;
+
+    flags.unshift({
+      type: "nbb_violation",
+      severity: "high",
+      title: "Potential No Balance Billing (NBB) / Zero Co-Payment Violation",
+      description: `Patient qualifies as ${memberCategoryText} admitted in Basic / Ward accommodation, where remaining covered charges (${formatPHP(nbbSavings)}) should carry Zero Co-Payment (₱0.00 out-of-pocket) under PhilHealth Circular 2016-0020 and Republic Act No. 11223 (Universal Health Care Act). Request NBB zero-balance billing compliance or Medical Social Service / Malasakit Center endorsement prior to discharge.`,
+      potential_savings: nbbSavings,
+    });
+  } else if (
+    (eligibilitySnapshot.contributor_type === "indirect_nbb" ||
+      eligibilitySnapshot.contributor_type === "lifetime") &&
+    eligibilitySnapshot.accommodation_type === "non_basic_private"
+  ) {
+    flags.push({
+      type: "compliance_note",
+      severity: "low",
+      title: "Private Room Co-Payment Applies (NBB Waived by Upgrade)",
+      description:
+        "Under PhilHealth Circular 2016-0020 and RA 11223, admission in a non-basic / private room waives No Balance Billing (Zero Co-Payment). Standard PhilHealth All-Case-Rates (ACR) deductions and mandatory Senior/PWD 20% discount + 12% VAT exemption still apply to your statement.",
+      potential_savings: 0,
+    });
+  }
+
+  if (!eligibilitySnapshot.has_mdr_or_pin) {
+    flags.unshift({
+      type: "compliance_note",
+      severity: "medium",
+      title: "Pre-Discharge Checklist: Present PhilHealth MDR / PIN Before Paying",
+      description:
+        "Patient has not yet presented a PhilHealth Member Data Record (MDR) or PhilHealth Identification Number (PIN) at billing. Retrieve your MDR/PIN online via the PhilHealth Member Portal (memberinquiry.philhealth.gov.ph) or the eGovPH Super App, or ask the hospital's PhilHealth CARES / Malasakit Center desk to verify your PIN before settlement so your Case Rate deduction is applied.",
+      potential_savings: 0,
+    });
+  }
+
+  const totalDisputable = preNbbDisputable + nbbSavings;
+  const fairOutOfPocket = Math.max(0, effectiveHospitalDue - totalDisputable);
 
   // Generate Negotiation Brief Summary
   let negotiationBrief = `AUDIT REPORT SUMMARY for Statement #${extracted.statement_number || "N/A"}\n`;
@@ -499,10 +697,24 @@ export function runAuditEngine(
     negotiationBrief += `Under PhilHealth All-Case-Rates, mandatory surgical/medical consumables are inclusive to the facility fee.\n\n`;
   }
 
+  if (caseRateShortfall > 0) {
+    negotiationBrief += `⚠️ UNDER-DEDUCTED PHILHEALTH CASE RATE: ${formatPHP(caseRateShortfall)}\n`;
+    negotiationBrief += `Hospital deducted ${formatPHP(extracted.philhealth_total)} instead of the ${formatPHP(totalPhilHealthRate)} case rate allocation (HCI: ${formatPHP(totalHciCap)} | PF: ${formatPHP(totalPfCap)}).\n\n`;
+  }
+
   if (estimatedSeniorSavings > 0) {
     negotiationBrief += `⚠️ STATUTORY ${privilegeLabel.toUpperCase()} RELIEF DISCREPANCY: ${formatPHP(estimatedSeniorSavings)}\n`;
-    negotiationBrief += `Applicable under ${statutoryRule.citation}, PhilHealth Advisory No. 2023-0036, and PhilHealth Circular 0056-2012 (12% VAT exemption and 20% discount must be deducted from gross charges FIRST, before subtracting PhilHealth).\n`;
+    negotiationBrief += `Applicable under ${effectiveCitation}, PhilHealth Advisory No. 2023-0036, and PhilHealth Circular 0056-2012 (12% VAT exemption and 20% discount must be deducted from gross charges FIRST, before subtracting PhilHealth).\n`;
     negotiationBrief += `Escalation Path: Local LGU ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).\n\n`;
+  }
+
+  if (nbbSavings > 0) {
+    negotiationBrief += `⚠️ NO BALANCE BILLING (NBB) / ZERO CO-PAYMENT ENTITLEMENT: ${formatPHP(nbbSavings)}\n`;
+    negotiationBrief += `Applicable under PhilHealth Circular 2016-0020 and Republic Act No. 11223 (UHC Act) for Basic / Ward accommodation.\n\n`;
+  }
+
+  if (!eligibilitySnapshot.has_mdr_or_pin) {
+    negotiationBrief += `📋 PRE-DISCHARGE REMINDER: Present your PhilHealth MDR / PIN (retrievable via the PhilHealth Member Portal or eGovPH Super App) to the billing clerk prior to settlement.\n\n`;
   }
 
   negotiationBrief += `ADJUSTED FAIR BALANCE DUE: ${formatPHP(fairOutOfPocket)}\n`;
@@ -517,9 +729,12 @@ export function runAuditEngine(
     actual_out_of_pocket: actualOutOfPocket,
     fair_out_of_pocket: fairOutOfPocket,
     disputed_overcharge_total: disputedOverchargeTotal,
+    case_rate_shortfall: caseRateShortfall,
+    nbb_savings: nbbSavings,
     philhealth_coverage_total: extracted.philhealth_total || totalPhilHealthRate,
     senior_pwd_savings: estimatedSeniorSavings,
     statutory_discount_type: resolvedDiscountType,
+    eligibility_snapshot: eligibilitySnapshot,
     detected_case_packages: matchedPackages.map(toPublicPackage),
     line_items: auditedItems,
     flags,

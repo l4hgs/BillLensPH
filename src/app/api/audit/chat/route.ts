@@ -9,7 +9,12 @@ import {
 } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createClient } from "@/lib/supabase/server";
-import { runAuditEngine } from "@/lib/auditEngine";
+import {
+  normalizeEligibilitySnapshot,
+  normalizeStatutoryDiscountType,
+  runAuditEngine,
+} from "@/lib/auditEngine";
+import { getGeminiModelFallbackList } from "@/lib/gemini";
 import { loadPackageCatalog } from "@/lib/packageCatalog";
 import {
   applyOverridesToBill,
@@ -118,7 +123,17 @@ function buildAuditContextBlock(audit: AuditEngineResult | null): string {
 
   const seniorPwdSavings = Number(audit.senior_pwd_savings) || 0;
   const disputedOvercharge = Number(audit.disputed_overcharge_total) || 0;
-  const totalPotentialSavings = disputedOvercharge + seniorPwdSavings;
+  const caseRateShortfall = Number(audit.case_rate_shortfall) || 0;
+  const nbbSavings = Number(audit.nbb_savings) || 0;
+  const totalPotentialSavings =
+    disputedOvercharge + seniorPwdSavings + caseRateShortfall + nbbSavings;
+  const statutoryLabel =
+    audit.statutory_discount_type === "pwd"
+      ? "PWD (RA 10754 / PDAO)"
+      : audit.statutory_discount_type === "senior"
+        ? "Senior Citizen (60+) (RA 9994 / OSCA)"
+        : "Senior Citizen (60+) / PWD (RA 9994 / RA 10754)";
+  const eligibility = normalizeEligibilitySnapshot(audit.eligibility_snapshot);
 
   return [
     "=== ACTIVE HOSPITAL BILL AUDIT CONTEXT ===",
@@ -127,11 +142,16 @@ function buildAuditContextBlock(audit: AuditEngineResult | null): string {
     audit.statement_number
       ? `Statement / SOA Number: ${audit.statement_number}`
       : null,
-    `Senior Citizen (60+) / PWD Audit Savings Detected: ${
+    `Patient Statutory Privilege: ${audit.statutory_discount_type || "regular"}`,
+    `PhilHealth Contributor Type: ${eligibility.contributor_type} | Accommodation: ${eligibility.accommodation_type} | MDR/PIN Presented: ${eligibility.has_mdr_or_pin ? "Yes" : "No (Remind patient to pull MDR via PhilHealth Member Portal or eGovPH Super App before paying)"} | Facility Level: ${eligibility.facility_level}`,
+    `${statutoryLabel} Audit Savings Detected: ${
       seniorPwdSavings > 0
-        ? `Yes (${formatPHP(seniorPwdSavings)} under RA 9994 / RA 10754)`
+        ? `Yes (${formatPHP(seniorPwdSavings)})`
         : "None flagged"
     }`,
+    nbbSavings > 0
+      ? `No Balance Billing (NBB) / Zero Co-Payment Relief (PhilHealth Circular 2016-0020 & RA 11223): ${formatPHP(nbbSavings)}`
+      : null,
     audit.negotiation_brief_summary
       ? `Audit Summary: ${audit.negotiation_brief_summary}`
       : null,
@@ -189,7 +209,8 @@ PHILIPPINE HEALTHCARE & SUBSIDY KNOWLEDGE BASE:
      a) **Health Care Institution (HCI) Fee** (typically 60%–70% of the package): Covers room & board, operating/delivery room fees, standard diagnostic labs (CBC, urinalysis, routine X-ray), standard drugs/IV fluids, and mandatory OR/ward supplies (gloves, syringes, sutures, sterile drapes, trocars, catheters, PACU/recovery room).
      b) **Professional Fee (PF) Share** (typically 30%–40% of the package): Directly deducted from the attending physician's, surgeon's, and anesthesiologist's professional fees.
    - **Why items are flagged Yellow ("Worth asking billing about"):** When a hospital bills routine supplies, diagnostics, or drugs separately as out-of-pocket charges even though they are already bundled inside the PhilHealth HCI Case Rate, or when a mandatory 20% Senior/PWD discount + 12% VAT exemption was missed on the item. Patients have the right to politely ask the Hospital Billing / PhilHealth Desk for a line-item reconciliation.
-   - **No Balance Billing (NBB) Policy:** Indigent, sponsored, Kasambahay, and Senior Citizen/Lifetime members admitted in basic/ward accommodations in government/DOH hospitals are entitled to zero out-of-pocket charges for covered services.
+   - **No Balance Billing (NBB) Policy (PhilHealth Circular 2016-0020 & RA 11223):** Indigent, sponsored, Kasambahay, Solo Parent (PC 2026-0015), PWD (PC 2026-0017), Senior Citizen (RA 10645), and Lifetime members (contributor_type === "indirect_nbb" or "lifetime") admitted in basic/ward accommodations (accommodation_type === "basic_ward") in accredited government/DOH hospitals are entitled to zero out-of-pocket charges (Zero Co-Payment). Upgrading to a private/non-basic room waives NBB zero co-payment, though ACR case rates and 20% Senior/PWD + 12% VAT discounts still apply.
+   - **Missing PhilHealth MDR / PIN Pre-Discharge Guidance:** If the patient has not yet presented their PhilHealth Member Data Record (MDR) or PIN (has_mdr_or_pin === false), advise the family to retrieve their MDR/PIN online via the **PhilHealth Member Portal** (memberinquiry.philhealth.gov.ph) or the **eGovPH Super App**, or request PIN verification at the hospital's PhilHealth CARES / Malasakit Center desk before paying.
 
 2. **Senior Citizen (RA 9994) & PWD (RA 10754) Statutory Rights & Deduction Sequence (PhilHealth Advisory No. 2023-0036 / Circular 0056-2012):**
    - Entitled to a **12% VAT exemption** PLUS a mandatory **20% discount** on medical/hospital charges, room & board, professional fees, diagnostic/laboratory tests, and medicines. (Mutually exclusive: a patient who is both a Senior Citizen and PWD may claim only one 20% discount, not 40%, per RA 9994 IRR.)
@@ -337,6 +358,15 @@ export async function POST(req: NextRequest) {
                 typeof raw.is_senior_or_pwd === "boolean"
                   ? raw.is_senior_or_pwd
                   : Boolean(raw.ocr.is_senior_or_pwd);
+              const discountType = normalizeStatutoryDiscountType(
+                raw.statutory_discount_type ?? raw.ocr.statutory_discount_type,
+                isSenior
+              );
+              const eligibilitySnapshot = normalizeEligibilitySnapshot(
+                row.eligibility_snapshot ??
+                  raw.eligibility_snapshot ??
+                  raw.ocr.eligibility_snapshot
+              );
 
               const catalog = await loadPackageCatalog(supabase);
 
@@ -344,9 +374,12 @@ export async function POST(req: NextRequest) {
                 applyOverridesToBill(raw.ocr, overrides),
                 {
                   auditId: row.id,
-                  isSeniorOrPwdOverride: isSenior,
+                  statutoryDiscountType: discountType,
+                  isSeniorOrPwdOverride: discountType !== "regular",
+                  eligibilitySnapshot,
                   referencePackages: catalog.packages,
                   statutoryRule: catalog.statutoryRule,
+                  statutoryRules: catalog.statutoryRules,
                   manualStatusOverrides: statusOverridesFrom(overrides),
                 }
               );
@@ -367,11 +400,13 @@ export async function POST(req: NextRequest) {
       await convertToModelMessages(uiMessages);
 
     // 3. Stream response from Gemini Flash via Vercel AI SDK
-    const google = createGoogleGenerativeAI({ apiKey });
-    const modelId =
-      process.env.GEMINI_CHAT_MODEL?.trim() ||
-      process.env.GEMINI_MODEL?.trim() ||
-      "gemini-3-flash-preview";
+    const google = createGoogleGenerativeAI({
+      apiKey,
+      headers: { "x-goog-api-key": apiKey },
+    });
+    const modelId = getGeminiModelFallbackList(
+      process.env.GEMINI_CHAT_MODEL
+    )[0];
 
     const result = streamText({
       model: google(modelId),

@@ -11,7 +11,10 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
+  BedDouble,
   Building2,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   Printer,
   RefreshCw,
@@ -31,7 +34,12 @@ import {
 } from "@/components/audit/TrafficLight";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
-import { runAuditEngine } from "@/lib/auditEngine";
+import {
+  DEFAULT_ELIGIBILITY_SNAPSHOT,
+  normalizeEligibilitySnapshot,
+  normalizeStatutoryDiscountType,
+  runAuditEngine,
+} from "@/lib/auditEngine";
 import { loadPackageCatalog } from "@/lib/packageCatalog";
 import {
   applyOverridesToBill,
@@ -44,8 +52,10 @@ import type {
   AuditOverrides,
   AuditTier,
   CatalogPackage,
+  EligibilitySnapshot,
   ExtractedBillData,
   ItemOverride,
+  StatutoryDiscountType,
   StatutoryRule,
 } from "@/types/audit";
 
@@ -79,9 +89,14 @@ export default function AuditStudioPage({
   const [statutoryRule, setStatutoryRule] = useState<StatutoryRule | undefined>(
     undefined
   );
+  const [statutoryRules, setStatutoryRules] = useState<StatutoryRule[]>([]);
 
   const [overrides, setOverrides] = useState<AuditOverrides>({});
-  const [isSenior, setIsSenior] = useState(false);
+  const [statutoryDiscountType, setStatutoryDiscountType] =
+    useState<StatutoryDiscountType>("regular");
+  const [eligibilitySnapshot, setEligibilitySnapshot] =
+    useState<EligibilitySnapshot>(DEFAULT_ELIGIBILITY_SNAPSHOT);
+  const [showEligibilityDrawer, setShowEligibilityDrawer] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState("");
 
   const [activeTier, setActiveTier] = useState<AuditTier | null>(null);
@@ -103,7 +118,13 @@ export default function AuditStudioPage({
         const catalog = await loadPackageCatalog(supabase);
         if (cancelled) return;
         let sampleOverrides: AuditOverrides = {};
-        let sampleSenior = Boolean(sampleBill.is_senior_or_pwd);
+        let sampleDiscountType: StatutoryDiscountType =
+          normalizeStatutoryDiscountType(
+            sampleBill.statutory_discount_type,
+            Boolean(sampleBill.is_senior_or_pwd)
+          );
+        let sampleEligibility: EligibilitySnapshot =
+          normalizeEligibilitySnapshot(sampleBill.eligibility_snapshot);
         try {
           const cached = sessionStorage.getItem(
             `billlens-sample-overrides-${id}`
@@ -112,9 +133,18 @@ export default function AuditStudioPage({
             const parsed = JSON.parse(cached) as {
               o?: AuditOverrides;
               s?: boolean;
+              d?: StatutoryDiscountType;
+              e?: EligibilitySnapshot;
             };
             if (isOverrides(parsed.o)) sampleOverrides = parsed.o;
-            if (typeof parsed.s === "boolean") sampleSenior = parsed.s;
+            if (parsed.d) {
+              sampleDiscountType = normalizeStatutoryDiscountType(parsed.d);
+            } else if (typeof parsed.s === "boolean") {
+              sampleDiscountType = parsed.s ? "senior" : "regular";
+            }
+            if (parsed.e) {
+              sampleEligibility = normalizeEligibilitySnapshot(parsed.e);
+            }
           }
         } catch {
           // Ignore storage parse error
@@ -122,12 +152,18 @@ export default function AuditStudioPage({
         setRawData({});
         setOcr(sampleBill);
         setOverrides(sampleOverrides);
-        setIsSenior(sampleSenior);
+        setStatutoryDiscountType(sampleDiscountType);
+        setEligibilitySnapshot(sampleEligibility);
         setSavedSnapshot(
-          JSON.stringify({ o: sampleOverrides, s: sampleSenior })
+          JSON.stringify({
+            o: sampleOverrides,
+            d: sampleDiscountType,
+            e: sampleEligibility,
+          })
         );
         setPackages(catalog.packages);
         setStatutoryRule(catalog.statutoryRule);
+        setStatutoryRules(catalog.statutoryRules ?? []);
         setLoadState("ready");
         return;
       }
@@ -157,6 +193,15 @@ export default function AuditStudioPage({
         typeof raw.is_senior_or_pwd === "boolean"
           ? raw.is_senior_or_pwd
           : Boolean(loadedOcr?.is_senior_or_pwd);
+      const loadedDiscountType = normalizeStatutoryDiscountType(
+        raw.statutory_discount_type ?? loadedOcr?.statutory_discount_type,
+        loadedSenior
+      );
+      const loadedEligibility = normalizeEligibilitySnapshot(
+        (row as Record<string, unknown>).eligibility_snapshot ??
+          raw.eligibility_snapshot ??
+          loadedOcr?.eligibility_snapshot
+      );
 
       const catalog = await loadPackageCatalog(supabase);
 
@@ -165,10 +210,18 @@ export default function AuditStudioPage({
       setRawData(raw);
       setOcr(loadedOcr);
       setOverrides(loadedOverrides);
-      setIsSenior(loadedSenior);
-      setSavedSnapshot(JSON.stringify({ o: loadedOverrides, s: loadedSenior }));
+      setStatutoryDiscountType(loadedDiscountType);
+      setEligibilitySnapshot(loadedEligibility);
+      setSavedSnapshot(
+        JSON.stringify({
+          o: loadedOverrides,
+          d: loadedDiscountType,
+          e: loadedEligibility,
+        })
+      );
       setPackages(catalog.packages);
       setStatutoryRule(catalog.statutoryRule);
+      setStatutoryRules(catalog.statutoryRules ?? []);
       setLoadState("ready");
     })();
 
@@ -183,16 +236,32 @@ export default function AuditStudioPage({
     if (!ocr) return null;
     return runAuditEngine(applyOverridesToBill(ocr, overrides), {
       auditId: id,
-      isSeniorOrPwdOverride: isSenior,
+      statutoryDiscountType,
+      isSeniorOrPwdOverride: statutoryDiscountType !== "regular",
+      eligibilitySnapshot,
       referencePackages: packages,
       statutoryRule,
+      statutoryRules,
       manualStatusOverrides: statusOverridesFrom(overrides),
     });
-  }, [ocr, overrides, isSenior, packages, statutoryRule, id]);
+  }, [
+    ocr,
+    overrides,
+    statutoryDiscountType,
+    eligibilitySnapshot,
+    packages,
+    statutoryRule,
+    statutoryRules,
+    id,
+  ]);
 
   const isDirty =
     savedSnapshot !== "" &&
-    JSON.stringify({ o: overrides, s: isSenior }) !== savedSnapshot;
+    JSON.stringify({
+      o: overrides,
+      d: statutoryDiscountType,
+      e: eligibilitySnapshot,
+    }) !== savedSnapshot;
 
   useEffect(() => {
     if (!isDirty) return;
@@ -240,10 +309,15 @@ export default function AuditStudioPage({
     try {
       const snapshot = JSON.parse(savedSnapshot) as {
         o: AuditOverrides;
-        s: boolean;
+        d?: StatutoryDiscountType;
+        s?: boolean;
+        e?: EligibilitySnapshot;
       };
       setOverrides(snapshot.o);
-      setIsSenior(snapshot.s);
+      setStatutoryDiscountType(
+        normalizeStatutoryDiscountType(snapshot.d, snapshot.s)
+      );
+      setEligibilitySnapshot(normalizeEligibilitySnapshot(snapshot.e));
     } catch {
       setOverrides({});
     }
@@ -259,32 +333,62 @@ export default function AuditStudioPage({
       try {
         sessionStorage.setItem(
           `billlens-sample-overrides-${id}`,
-          JSON.stringify({ o: overrides, s: isSenior })
+          JSON.stringify({
+            o: overrides,
+            d: statutoryDiscountType,
+            s: statutoryDiscountType !== "regular",
+            e: eligibilitySnapshot,
+          })
         );
       } catch {
         // Ignore storage error
       }
       setIsSaving(false);
-      setSavedSnapshot(JSON.stringify({ o: overrides, s: isSenior }));
+      setSavedSnapshot(
+        JSON.stringify({
+          o: overrides,
+          d: statutoryDiscountType,
+          e: eligibilitySnapshot,
+        })
+      );
       setSavedNotice(true);
       return;
     }
 
-    const { data, error } = await supabase
+    const updatedRaw = {
+      ...rawData,
+      overrides: overrides as unknown as Json,
+      statutory_discount_type: statutoryDiscountType,
+      is_senior_or_pwd: statutoryDiscountType !== "regular",
+      eligibility_snapshot: eligibilitySnapshot as unknown as Json,
+    };
+
+    const fullPayload = {
+      hospital_name: result.hospital_name,
+      total_billed: result.gross_total,
+      estimated_out_of_pocket: result.fair_out_of_pocket,
+      eligibility_snapshot: eligibilitySnapshot as unknown as Json,
+      raw_extracted_data: updatedRaw,
+      audit_results: result as unknown as Json,
+    };
+
+    let { data, error } = await supabase
       .from("audits")
-      .update({
-        hospital_name: result.hospital_name,
-        total_billed: result.gross_total,
-        estimated_out_of_pocket: result.fair_out_of_pocket,
-        raw_extracted_data: {
-          ...rawData,
-          overrides: overrides as unknown as Json,
-          is_senior_or_pwd: isSenior,
-        },
-        audit_results: result as unknown as Json,
-      })
+      .update(fullPayload)
       .eq("id", id)
       .select("id");
+
+    if (error && /eligibility_snapshot/i.test(error.message)) {
+      const fallbackPayload = { ...fullPayload };
+      delete (fallbackPayload as Record<string, unknown>).eligibility_snapshot;
+      const retry = await supabase
+        .from("audits")
+        .update(fallbackPayload)
+        .eq("id", id)
+        .select("id");
+      data = retry.data;
+      error = retry.error;
+    }
 
     setIsSaving(false);
 
@@ -299,12 +403,14 @@ export default function AuditStudioPage({
       return;
     }
 
-    setRawData((prev) => ({
-      ...prev,
-      overrides: overrides as unknown as Json,
-      is_senior_or_pwd: isSenior,
-    }));
-    setSavedSnapshot(JSON.stringify({ o: overrides, s: isSenior }));
+    setRawData(updatedRaw);
+    setSavedSnapshot(
+      JSON.stringify({
+        o: overrides,
+        d: statutoryDiscountType,
+        e: eligibilitySnapshot,
+      })
+    );
     setSavedNotice(true);
   };
 
@@ -325,7 +431,12 @@ export default function AuditStudioPage({
       const res = await fetch("/api/audit/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auditId: id, isSeniorOrPwd: isSenior }),
+        body: JSON.stringify({
+          auditId: id,
+          statutoryDiscountType,
+          isSeniorOrPwd: statutoryDiscountType !== "regular",
+          eligibilitySnapshot,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -422,16 +533,35 @@ export default function AuditStudioPage({
               </p>
             </div>
 
-            <label className="mx-auto flex max-w-sm cursor-pointer items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-800">
-              <input
-                type="checkbox"
-                checked={isSenior}
-                onChange={(e) => setIsSenior(e.target.checked)}
-                disabled={isAnalyzing}
-                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              />
-              Patient is a Senior Citizen (60+) or PWD
-            </label>
+            <div className="mx-auto max-w-md space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left">
+              <span className="block text-[11px] font-bold text-slate-800">
+                Patient Statutory Privilege (RA 9994 / RA 10754)
+              </span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(
+                  [
+                    { id: "regular", label: "Regular" },
+                    { id: "senior", label: "Senior (60+)" },
+                    { id: "pwd", label: "PWD (RA 10754)" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={isAnalyzing}
+                    onClick={() => setStatutoryDiscountType(opt.id)}
+                    className={cn(
+                      "cursor-pointer rounded-full px-2.5 py-2 text-[11px] font-bold transition-all",
+                      statutoryDiscountType === opt.id
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {actionError && (
               <p
@@ -469,7 +599,10 @@ export default function AuditStudioPage({
   }
 
   const potentialSavings =
-    result.disputed_overcharge_total + result.senior_pwd_savings;
+    result.disputed_overcharge_total +
+    result.senior_pwd_savings +
+    (result.case_rate_shortfall ?? 0) +
+    (result.nbb_savings ?? 0);
   const hasMatchedPackage = result.detected_case_packages.length > 0;
 
   return (
@@ -535,15 +668,25 @@ export default function AuditStudioPage({
 
           <div className="flex flex-wrap items-center gap-1.5">
             {hasMatchedPackage ? (
-              result.detected_case_packages.map((pkg) => (
-                <span
-                  key={pkg.code}
-                  className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700"
-                >
-                  <ShieldCheck className="h-3 w-3" />
-                  {pkg.keyword} · {pkg.code} · {formatPHP(pkg.total_rate)}
-                </span>
-              ))
+              result.detected_case_packages.map((pkg) => {
+                const isUnverified =
+                  pkg.is_verified === false ||
+                  Boolean(pkg.source_url?.startsWith("ai_grounded"));
+                return (
+                  <React.Fragment key={pkg.code}>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                      <ShieldCheck className="h-3 w-3" />
+                      {pkg.keyword} · {pkg.code} · {formatPHP(pkg.total_rate)}
+                    </span>
+                    {isUnverified && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+                        <Sparkles className="h-2.5 w-2.5 text-amber-600" />
+                        AI-Estimated (Unverified)
+                      </span>
+                    )}
+                  </React.Fragment>
+                );
+              })
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
                 No PhilHealth case package matched
@@ -551,23 +694,239 @@ export default function AuditStudioPage({
             )}
           </div>
 
-          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-slate-50 px-3.5 py-2.5">
-            <span className="text-xs font-semibold text-slate-800">
-              Senior Citizen (60+) or PWD
-              <span className="ml-1.5 font-normal text-slate-500">
-                RA 9994 / RA 10754
+          <div className="space-y-2 rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-800">
+                Patient Statutory Privilege
+                <span className="ml-1.5 font-normal text-slate-500">
+                  RA 9994 (OSCA) / RA 10754 (PDAO)
+                </span>
               </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={isSenior}
-              onChange={(e) => {
-                setIsSenior(e.target.checked);
-                setSavedNotice(false);
-              }}
-              className="h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            />
-          </label>
+              <span className="text-[10px] font-bold uppercase text-slate-500">
+                Mutually Exclusive
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { id: "regular", label: "Regular" },
+                  { id: "senior", label: "Senior Citizen (60+)" },
+                  { id: "pwd", label: "PWD (RA 10754)" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    setStatutoryDiscountType(opt.id);
+                    setSavedNotice(false);
+                  }}
+                  className={cn(
+                    "cursor-pointer rounded-full px-2.5 py-2 text-[11px] font-bold transition-all",
+                    statutoryDiscountType === opt.id
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Collapsible PhilHealth Membership & Ward Info Drawer (Migration 007) */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50">
+            <button
+              type="button"
+              onClick={() => setShowEligibilityDrawer((prev) => !prev)}
+              className="flex w-full cursor-pointer items-center justify-between gap-2 px-3.5 py-2.5 text-left transition-colors hover:bg-slate-100"
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <BedDouble className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+                <span className="text-xs font-semibold text-slate-800">
+                  PhilHealth Membership &amp; Ward Info
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                  {eligibilitySnapshot.contributor_type === "indirect_nbb"
+                    ? "Indirect (NBB)"
+                    : eligibilitySnapshot.contributor_type === "direct"
+                      ? "Direct"
+                      : eligibilitySnapshot.contributor_type === "lifetime"
+                        ? "Lifetime"
+                        : "Member: Auto"}
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                  {eligibilitySnapshot.accommodation_type === "basic_ward"
+                    ? "Basic / Ward"
+                    : eligibilitySnapshot.accommodation_type ===
+                        "non_basic_private"
+                      ? "Private Room"
+                      : "Ward: Auto"}
+                </span>
+                {!eligibilitySnapshot.has_mdr_or_pin && (
+                  <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                    MDR Needed
+                  </span>
+                )}
+              </div>
+              {showEligibilityDrawer ? (
+                <ChevronUp className="h-4 w-4 shrink-0 text-slate-500" />
+              ) : (
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+              )}
+            </button>
+
+            {showEligibilityDrawer && (
+              <div className="space-y-3 border-t border-slate-200/80 bg-white/70 p-3.5">
+                <div>
+                  <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
+                    Contributor Type (NBB Eligibility)
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                    {(
+                      [
+                        { id: "unknown", label: "Not Sure" },
+                        { id: "direct", label: "Direct" },
+                        { id: "indirect_nbb", label: "Indirect / NBB" },
+                        { id: "lifetime", label: "Lifetime" },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setEligibilitySnapshot((prev) => ({
+                            ...prev,
+                            contributor_type: opt.id,
+                          }));
+                          setSavedNotice(false);
+                        }}
+                        className={cn(
+                          "cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
+                          eligibilitySnapshot.contributor_type === opt.id
+                            ? "bg-blue-600 text-white"
+                            : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
+                    Room / Ward Accommodation
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(
+                      [
+                        { id: "unknown", label: "Not Sure" },
+                        { id: "basic_ward", label: "Basic / Ward (NBB)" },
+                        { id: "non_basic_private", label: "Private Room" },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setEligibilitySnapshot((prev) => ({
+                            ...prev,
+                            accommodation_type: opt.id,
+                          }));
+                          setSavedNotice(false);
+                        }}
+                        className={cn(
+                          "cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
+                          eligibilitySnapshot.accommodation_type === opt.id
+                            ? "bg-blue-600 text-white"
+                            : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  <div>
+                    <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
+                      PhilHealth MDR / PIN Presented?
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          { val: true, label: "Yes, Presented" },
+                          { val: false, label: "Not Yet" },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={String(opt.val)}
+                          type="button"
+                          onClick={() => {
+                            setEligibilitySnapshot((prev) => ({
+                              ...prev,
+                              has_mdr_or_pin: opt.val,
+                            }));
+                            setSavedNotice(false);
+                          }}
+                          className={cn(
+                            "cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
+                            eligibilitySnapshot.has_mdr_or_pin === opt.val
+                              ? "bg-blue-600 text-white"
+                              : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
+                      Hospital Facility Level
+                    </span>
+                    <select
+                      value={eligibilitySnapshot.facility_level}
+                      onChange={(e) => {
+                        setEligibilitySnapshot((prev) => ({
+                          ...prev,
+                          facility_level: e.target
+                            .value as EligibilitySnapshot["facility_level"],
+                        }));
+                        setSavedNotice(false);
+                      }}
+                      className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-800"
+                    >
+                      <option value="unknown">Auto / Not Sure</option>
+                      <option value="level_1">Level 1 Hospital</option>
+                      <option value="level_2">Level 2 Hospital</option>
+                      <option value="level_3">Level 3 Tertiary</option>
+                      <option value="asc">ASC / Dialysis Center</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!eligibilitySnapshot.has_mdr_or_pin && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+              <p className="flex items-center gap-1.5 font-bold text-amber-900">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                Pre-Discharge Checklist: Pull Your PhilHealth MDR / PIN Before Paying
+              </p>
+              <p className="mt-1">
+                Sign in to the <strong>PhilHealth Member Portal</strong> (
+                <code>memberinquiry.philhealth.gov.ph</code>) or open the{" "}
+                <strong>eGovPH Super App</strong> on your phone to download your
+                Member Data Record (MDR) and present your PIN to the hospital
+                billing desk before final settlement.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -1,56 +1,162 @@
 -- ============================================================================
--- BillLens PH — Migration 005: Catalog Admin Write Policies
+-- BillLens PH — Migration 005: Catalog Admin Write Policies & Verification
 --
--- Keeps public read (`SELECT` for `anon, authenticated`) on all catalog tables
--- (`philhealth_packages`, `package_item_aliases`, `statutory_rules`), while
--- granting authenticated staff/users permission to insert and update versioned
--- PhilHealth case rates and aliases without requiring code deployments.
+-- 1. Adds `role` ('member' | 'staff' | 'admin') to `public.profiles` and
+--    `is_verified` (boolean) to `public.philhealth_packages`.
+-- 2. Updates `statutory_rules` uniqueness to `(rule_code, effective_from)` so
+--    multiple dated versions of `SENIOR_PWD` can coexist.
+-- 3. Restricts write policies (`INSERT`, `UPDATE`, `DELETE`) on
+--    `philhealth_packages`, `package_item_aliases`, and `statutory_rules`
+--    strictly to users with `profiles.role = 'admin'`.
 -- ============================================================================
 
--- 1. `philhealth_packages` write policies for authenticated staff
+-- 1. Add `role` column to `public.profiles`
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member'
+  CHECK (role IN ('member', 'staff', 'admin'));
+
+-- 2. Add `is_verified` column to `public.philhealth_packages`
+ALTER TABLE public.philhealth_packages
+  ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT true;
+
+UPDATE public.philhealth_packages
+SET is_verified = false
+WHERE source_url LIKE 'ai_grounded%';
+
+-- 3. Allow multiple dated versions of `statutory_rules` per `rule_code`
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'statutory_rules_rule_code_key'
+  ) THEN
+    ALTER TABLE public.statutory_rules
+      DROP CONSTRAINT statutory_rules_rule_code_key;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'statutory_rules_rule_code_effective_from_key'
+  ) THEN
+    ALTER TABLE public.statutory_rules
+      ADD CONSTRAINT statutory_rules_rule_code_effective_from_key
+      UNIQUE (rule_code, effective_from);
+  END IF;
+END $$;
+
+-- 4. `philhealth_packages` write policies restricted to `profiles.role = 'admin'`
 DROP POLICY IF EXISTS "Authenticated staff can insert philhealth packages" ON public.philhealth_packages;
-CREATE POLICY "Authenticated staff can insert philhealth packages"
+DROP POLICY IF EXISTS "Admins can insert philhealth packages" ON public.philhealth_packages;
+CREATE POLICY "Admins can insert philhealth packages"
   ON public.philhealth_packages FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 DROP POLICY IF EXISTS "Authenticated staff can update philhealth packages" ON public.philhealth_packages;
-CREATE POLICY "Authenticated staff can update philhealth packages"
+DROP POLICY IF EXISTS "Admins can update philhealth packages" ON public.philhealth_packages;
+CREATE POLICY "Admins can update philhealth packages"
   ON public.philhealth_packages FOR UPDATE
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
--- 2. `package_item_aliases` write policies for authenticated staff
+-- 5. `package_item_aliases` write policies restricted to `profiles.role = 'admin'`
 DROP POLICY IF EXISTS "Authenticated staff can insert package item aliases" ON public.package_item_aliases;
-CREATE POLICY "Authenticated staff can insert package item aliases"
+DROP POLICY IF EXISTS "Admins can insert package item aliases" ON public.package_item_aliases;
+CREATE POLICY "Admins can insert package item aliases"
   ON public.package_item_aliases FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 DROP POLICY IF EXISTS "Authenticated staff can update package item aliases" ON public.package_item_aliases;
-CREATE POLICY "Authenticated staff can update package item aliases"
+DROP POLICY IF EXISTS "Admins can update package item aliases" ON public.package_item_aliases;
+CREATE POLICY "Admins can update package item aliases"
   ON public.package_item_aliases FOR UPDATE
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 DROP POLICY IF EXISTS "Authenticated staff can delete package item aliases" ON public.package_item_aliases;
-CREATE POLICY "Authenticated staff can delete package item aliases"
+DROP POLICY IF EXISTS "Admins can delete package item aliases" ON public.package_item_aliases;
+CREATE POLICY "Admins can delete package item aliases"
   ON public.package_item_aliases FOR DELETE
   TO authenticated
-  USING (true);
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
--- 3. `statutory_rules` write policies for authenticated staff
+-- 6. `statutory_rules` write policies restricted to `profiles.role = 'admin'`
 DROP POLICY IF EXISTS "Authenticated staff can insert statutory rules" ON public.statutory_rules;
-CREATE POLICY "Authenticated staff can insert statutory rules"
+DROP POLICY IF EXISTS "Admins can insert statutory rules" ON public.statutory_rules;
+CREATE POLICY "Admins can insert statutory rules"
   ON public.statutory_rules FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 DROP POLICY IF EXISTS "Authenticated staff can update statutory rules" ON public.statutory_rules;
-CREATE POLICY "Authenticated staff can update statutory rules"
+DROP POLICY IF EXISTS "Admins can update statutory rules" ON public.statutory_rules;
+CREATE POLICY "Admins can update statutory rules"
   ON public.statutory_rules FOR UPDATE
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );

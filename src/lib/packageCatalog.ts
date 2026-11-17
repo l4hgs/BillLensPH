@@ -14,6 +14,7 @@ type StatutoryRuleRow = Database["public"]["Tables"]["statutory_rules"]["Row"];
 export interface PackageCatalogResult {
   packages: CatalogPackage[];
   statutoryRule?: StatutoryRule;
+  statutoryRules?: StatutoryRule[];
   /** Set when the catalog could not be loaded or is empty. */
   error: string | null;
 }
@@ -265,6 +266,7 @@ export function toCatalogPackage(
     effective_from?: string | null;
     effective_to?: string | null;
     source_url?: string | null;
+    is_verified?: boolean | null;
   },
   aliases?: PackageAlias[]
 ): CatalogPackage {
@@ -272,6 +274,10 @@ export function toCatalogPackage(
     aliases && aliases.length > 0
       ? aliases
       : defaultAliasesForCode(row.case_code);
+
+  const isAiGrounded = Boolean(row.source_url?.startsWith("ai_grounded"));
+  const isVerified =
+    typeof row.is_verified === "boolean" ? row.is_verified : !isAiGrounded;
 
   return {
     code: row.case_code,
@@ -284,6 +290,7 @@ export function toCatalogPackage(
     effective_from: row.effective_from ?? undefined,
     effective_to: row.effective_to ?? null,
     source_url: row.source_url ?? null,
+    is_verified: isVerified,
     aliases: resolvedAliases,
   };
 }
@@ -305,7 +312,10 @@ export function toStatutoryRule(
     | "incomplete_threshold"
     | "eligible_categories"
     | "citation"
-  >
+  > & {
+    effective_from?: string | null;
+    effective_to?: string | null;
+  }
 ): StatutoryRule {
   return {
     rule_code: row.rule_code,
@@ -316,7 +326,57 @@ export function toStatutoryRule(
     eligible_categories: (row.eligible_categories ??
       []) as ExtractedLineItem["category"][],
     citation: row.citation || "RA 9994 / RA 10754",
+    ...(row.effective_from ? { effective_from: row.effective_from } : {}),
+    ...(row.effective_to !== undefined
+      ? { effective_to: row.effective_to }
+      : {}),
   };
+}
+
+/**
+ * Given multiple versioned rows in `statutory_rules`, selects the single active
+ * statutory rule for `serviceDate` (YYYY-MM-DD). Falls back to the latest
+ * `effective_from` version when `serviceDate` is missing or outside explicit windows.
+ */
+export function selectStatutoryRuleForDate(
+  rules: StatutoryRule[],
+  serviceDate?: string,
+  ruleCode = "SENIOR_PWD"
+): StatutoryRule | undefined {
+  if (!Array.isArray(rules) || rules.length === 0) return undefined;
+
+  const matchingCode = rules.filter(
+    (r) => (r.rule_code || "").toUpperCase() === ruleCode.toUpperCase()
+  );
+  const candidates = matchingCode.length > 0 ? matchingCode : rules;
+
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const parsedTarget =
+    serviceDate && /^\d{4}-\d{2}-\d{2}/.test(serviceDate.trim())
+      ? serviceDate.trim().slice(0, 10)
+      : null;
+
+  const sorted = [...candidates].sort((a, b) => {
+    const fromA = a.effective_from || "0000-00-00";
+    const fromB = b.effective_from || "0000-00-00";
+    return fromB.localeCompare(fromA);
+  });
+
+  if (parsedTarget) {
+    const matchingDate = sorted.find((r) => {
+      const from = r.effective_from || "0000-00-00";
+      const to = r.effective_to || "9999-12-31";
+      return from <= parsedTarget && parsedTarget <= to;
+    });
+    if (matchingDate) {
+      return matchingDate;
+    }
+  }
+
+  return sorted[0];
 }
 
 /**
@@ -415,14 +475,16 @@ export async function loadPackageCatalog(
   }
 
   let statutoryRule: StatutoryRule | undefined;
+  let statutoryRules: StatutoryRule[] = [];
   try {
-    const { data: ruleRow } = await supabase
+    const { data: ruleRows } = await supabase
       .from("statutory_rules")
-      .select("*")
-      .eq("rule_code", "SENIOR_PWD")
-      .maybeSingle();
-    if (ruleRow) {
-      statutoryRule = toStatutoryRule(ruleRow as StatutoryRuleRow);
+      .select("*");
+    if (Array.isArray(ruleRows) && ruleRows.length > 0) {
+      statutoryRules = (ruleRows as StatutoryRuleRow[]).map((r) =>
+        toStatutoryRule(r)
+      );
+      statutoryRule = selectStatutoryRuleForDate(statutoryRules);
     }
   } catch {
     // Optional table before migration 004 is applied
@@ -433,6 +495,7 @@ export async function loadPackageCatalog(
       toCatalogPackage(row, aliasesByPackage.get(row.id))
     ),
     statutoryRule,
+    statutoryRules,
     error: null,
   };
 }
@@ -444,6 +507,7 @@ export interface SeedPackageInput {
   effective_from: string;
   effective_to?: string | null;
   source_url?: string | null;
+  is_verified?: boolean;
   hci_fee: number;
   prof_fee: number;
   total_case_rate: number;
@@ -534,6 +598,15 @@ export function normalizeSeedPackage(
     }
   }
 
+  const is_verified =
+    typeof raw.is_verified === "boolean"
+      ? raw.is_verified
+      : typeof raw.isVerified === "boolean"
+        ? raw.isVerified
+        : source_url?.startsWith("ai_grounded")
+          ? false
+          : undefined;
+
   return {
     case_code,
     procedure_keyword,
@@ -541,6 +614,7 @@ export function normalizeSeedPackage(
     effective_from,
     effective_to,
     source_url,
+    ...(is_verified !== undefined ? { is_verified } : {}),
     hci_fee,
     prof_fee,
     total_case_rate,
@@ -629,20 +703,37 @@ export async function upsertCatalogPackages(
 
     let packageId = existing?.id;
 
+    const isVerified =
+      typeof pkg.is_verified === "boolean"
+        ? pkg.is_verified
+        : !Boolean(pkg.source_url?.startsWith("ai_grounded"));
+
     if (packageId) {
-      const { error: updateErr } = await supabase
+      const updatePayload = {
+        procedure_keyword: pkg.procedure_keyword,
+        circular_id: pkg.circular_id,
+        effective_to: pkg.effective_to ?? null,
+        source_url: pkg.source_url ?? null,
+        is_verified: isVerified,
+        hci_fee: pkg.hci_fee,
+        prof_fee: pkg.prof_fee,
+        total_case_rate: pkg.total_case_rate,
+        inclusive_items: pkg.inclusive_items,
+      };
+      let { error: updateErr } = await supabase
         .from("philhealth_packages")
-        .update({
-          procedure_keyword: pkg.procedure_keyword,
-          circular_id: pkg.circular_id,
-          effective_to: pkg.effective_to ?? null,
-          source_url: pkg.source_url ?? null,
-          hci_fee: pkg.hci_fee,
-          prof_fee: pkg.prof_fee,
-          total_case_rate: pkg.total_case_rate,
-          inclusive_items: pkg.inclusive_items,
-        })
+        .update(updatePayload)
         .eq("id", packageId);
+
+      if (updateErr && /is_verified/i.test(updateErr.message)) {
+        const fallbackPayload = { ...updatePayload };
+        delete (fallbackPayload as Record<string, unknown>).is_verified;
+        const retry = await supabase
+          .from("philhealth_packages")
+          .update(fallbackPayload)
+          .eq("id", packageId);
+        updateErr = retry.error;
+      }
 
       if (updateErr) {
         throw new Error(
@@ -651,22 +742,36 @@ export async function upsertCatalogPackages(
       }
       upsertedPackages++;
     } else {
-      const { data: inserted, error: insertErr } = await supabase
+      const insertPayload = {
+        case_code: pkg.case_code,
+        procedure_keyword: pkg.procedure_keyword,
+        circular_id: pkg.circular_id,
+        effective_from: pkg.effective_from,
+        effective_to: pkg.effective_to ?? null,
+        source_url: pkg.source_url ?? null,
+        is_verified: isVerified,
+        hci_fee: pkg.hci_fee,
+        prof_fee: pkg.prof_fee,
+        total_case_rate: pkg.total_case_rate,
+        inclusive_items: pkg.inclusive_items,
+      };
+      let { data: inserted, error: insertErr } = await supabase
         .from("philhealth_packages")
-        .insert({
-          case_code: pkg.case_code,
-          procedure_keyword: pkg.procedure_keyword,
-          circular_id: pkg.circular_id,
-          effective_from: pkg.effective_from,
-          effective_to: pkg.effective_to ?? null,
-          source_url: pkg.source_url ?? null,
-          hci_fee: pkg.hci_fee,
-          prof_fee: pkg.prof_fee,
-          total_case_rate: pkg.total_case_rate,
-          inclusive_items: pkg.inclusive_items,
-        })
+        .insert(insertPayload)
         .select("id")
         .single();
+
+      if (insertErr && /is_verified/i.test(insertErr.message)) {
+        const fallbackPayload = { ...insertPayload };
+        delete (fallbackPayload as Record<string, unknown>).is_verified;
+        const retry = await supabase
+          .from("philhealth_packages")
+          .insert(fallbackPayload)
+          .select("id")
+          .single();
+        inserted = retry.data;
+        insertErr = retry.error;
+      }
 
       if (insertErr || !inserted) {
         throw new Error(

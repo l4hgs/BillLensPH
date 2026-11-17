@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import type { CatalogPackage, ExtractedBillData } from "@/types/audit";
+import { getGeminiModelFallbackList } from "@/lib/gemini";
 import { bestPackageForDiagnosis } from "@/lib/itemMatcher";
 import {
   normalizeSeedPackage,
@@ -52,7 +53,7 @@ Rules:
 export function hasCatalogMatchForBill(
   bill: Pick<
     ExtractedBillData,
-    "case_rate_codes_detected" | "primary_diagnosis"
+    "case_rate_codes_detected" | "primary_diagnosis" | "diagnosis_or_procedure"
   >,
   packages: CatalogPackage[]
 ): boolean {
@@ -64,8 +65,10 @@ export function hasCatalogMatchForBill(
     }
   }
 
-  if (bill.primary_diagnosis && bill.primary_diagnosis.trim()) {
-    const matched = bestPackageForDiagnosis(bill.primary_diagnosis, packages);
+  const diagText =
+    bill.primary_diagnosis?.trim() || bill.diagnosis_or_procedure?.trim();
+  if (diagText) {
+    const matched = bestPackageForDiagnosis(diagText, packages);
     if (matched) return true;
   }
 
@@ -103,24 +106,19 @@ export async function discoverPhilHealthPackageWithGemini(
 
   const userPrompt = `${DISCOVERY_SYSTEM_PROMPT}\n\nResolve the official PhilHealth Case Rate package(s) for:\n${parts.join("\n")}`;
 
-  const configuredModel = process.env.GEMINI_MODEL?.trim();
-  const models = Array.from(
-    new Set([
-      ...(configuredModel ? [configuredModel] : []),
-      "gemini-3-flash-preview",
-      "gemini-3.5-flash",
-      "gemini-3.1-flash-lite-preview",
-    ])
-  );
+  const models = getGeminiModelFallbackList();
 
   let lastError: Error | null = null;
 
   for (const model of models) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: userPrompt }] }],
           generationConfig: {
@@ -180,6 +178,7 @@ export async function discoverPhilHealthPackageWithGemini(
                 source_url:
                   (item as Record<string, unknown>).source_url ||
                   "ai_grounded:philhealth-acr",
+                is_verified: false,
               })
             );
           } catch {
@@ -213,7 +212,7 @@ export async function ensureBillPackagesInCatalog(
   supabase: SupabaseClient<Database> | null,
   bill: Pick<
     ExtractedBillData,
-    "case_rate_codes_detected" | "primary_diagnosis"
+    "case_rate_codes_detected" | "primary_diagnosis" | "diagnosis_or_procedure"
   >,
   currentPackages: CatalogPackage[],
   discoverFn: (
@@ -227,7 +226,9 @@ export async function ensureBillPackagesInCatalog(
     return { packages: currentPackages, discovered: [] };
   }
 
-  const hasDiagnosis = Boolean(bill.primary_diagnosis?.trim());
+  const diagText =
+    bill.primary_diagnosis?.trim() || bill.diagnosis_or_procedure?.trim();
+  const hasDiagnosis = Boolean(diagText);
   const hasCodes =
     Array.isArray(bill.case_rate_codes_detected) &&
     bill.case_rate_codes_detected.some((c) => c.trim().length > 0);
@@ -237,14 +238,20 @@ export async function ensureBillPackagesInCatalog(
   }
 
   try {
-    const seedInputs = await discoverFn({
-      diagnosis: bill.primary_diagnosis,
+    const rawSeedInputs = await discoverFn({
+      diagnosis: diagText,
       codes: bill.case_rate_codes_detected,
     });
 
-    if (seedInputs.length === 0) {
+    if (rawSeedInputs.length === 0) {
       return { packages: currentPackages, discovered: [] };
     }
+
+    const seedInputs: SeedPackageInput[] = rawSeedInputs.map((item) => ({
+      ...item,
+      source_url: item.source_url ?? "ai_grounded:philhealth-acr",
+      is_verified: false,
+    }));
 
     // Best-effort cache into Supabase so future scans and `/rates` have it stored
     if (supabase) {
@@ -271,6 +278,7 @@ export async function ensureBillPackagesInCatalog(
           effective_from: item.effective_from,
           effective_to: item.effective_to ?? null,
           source_url: item.source_url ?? "ai_grounded:philhealth-acr",
+          is_verified: false,
         },
         item.aliases
       )

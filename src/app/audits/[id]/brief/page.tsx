@@ -21,7 +21,12 @@ import {
 import { AuditCopilotDrawer } from "@/components/audit/AuditCopilotDrawer";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
-import { runAuditEngine } from "@/lib/auditEngine";
+import {
+  DEFAULT_ELIGIBILITY_SNAPSHOT,
+  normalizeEligibilitySnapshot,
+  normalizeStatutoryDiscountType,
+  runAuditEngine,
+} from "@/lib/auditEngine";
 import { loadPackageCatalog } from "@/lib/packageCatalog";
 import {
   applyOverridesToBill,
@@ -31,7 +36,9 @@ import { getSampleBillById } from "@/lib/sampleAudits";
 import type {
   AuditOverrides,
   CatalogPackage,
+  EligibilitySnapshot,
   ExtractedBillData,
+  StatutoryDiscountType,
   StatutoryRule,
 } from "@/types/audit";
 
@@ -61,11 +68,15 @@ export default function NegotiationBriefPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ocr, setOcr] = useState<ExtractedBillData | null>(null);
   const [overrides, setOverrides] = useState<AuditOverrides>({});
-  const [isSenior, setIsSenior] = useState(false);
+  const [statutoryDiscountType, setStatutoryDiscountType] =
+    useState<StatutoryDiscountType>("regular");
+  const [eligibilitySnapshot, setEligibilitySnapshot] =
+    useState<EligibilitySnapshot>(DEFAULT_ELIGIBILITY_SNAPSHOT);
   const [packages, setPackages] = useState<CatalogPackage[]>([]);
   const [statutoryRule, setStatutoryRule] = useState<StatutoryRule | undefined>(
     undefined
   );
+  const [statutoryRules, setStatutoryRules] = useState<StatutoryRule[]>([]);
 
   // Customizable signatory metadata for the formal brief
   const [representativeName, setRepresentativeName] = useState("");
@@ -96,7 +107,13 @@ export default function NegotiationBriefPage({
         const catalog = await loadPackageCatalog(supabase);
         if (cancelled) return;
         let sampleOverrides: AuditOverrides = {};
-        let sampleSenior = Boolean(sampleBill.is_senior_or_pwd);
+        let sampleDiscountType: StatutoryDiscountType =
+          normalizeStatutoryDiscountType(
+            sampleBill.statutory_discount_type,
+            Boolean(sampleBill.is_senior_or_pwd)
+          );
+        let sampleEligibility: EligibilitySnapshot =
+          normalizeEligibilitySnapshot(sampleBill.eligibility_snapshot);
         try {
           const cached = sessionStorage.getItem(
             `billlens-sample-overrides-${id}`
@@ -105,19 +122,30 @@ export default function NegotiationBriefPage({
             const parsed = JSON.parse(cached) as {
               o?: AuditOverrides;
               s?: boolean;
+              d?: StatutoryDiscountType;
+              e?: EligibilitySnapshot;
             };
             if (isOverrides(parsed.o)) sampleOverrides = parsed.o;
-            if (typeof parsed.s === "boolean") sampleSenior = parsed.s;
+            if (parsed.d) {
+              sampleDiscountType = normalizeStatutoryDiscountType(parsed.d);
+            } else if (typeof parsed.s === "boolean") {
+              sampleDiscountType = parsed.s ? "senior" : "regular";
+            }
+            if (parsed.e) {
+              sampleEligibility = normalizeEligibilitySnapshot(parsed.e);
+            }
           }
         } catch {
           // Ignore storage parse error
         }
         setOcr(sampleBill);
         setOverrides(sampleOverrides);
-        setIsSenior(sampleSenior);
+        setStatutoryDiscountType(sampleDiscountType);
+        setEligibilitySnapshot(sampleEligibility);
         setRepresentativeName(sampleBill.patient_name || "");
         setPackages(catalog.packages);
         setStatutoryRule(catalog.statutoryRule);
+        setStatutoryRules(catalog.statutoryRules ?? []);
         setLoadState("ready");
         return;
       }
@@ -152,6 +180,15 @@ export default function NegotiationBriefPage({
         typeof raw.is_senior_or_pwd === "boolean"
           ? raw.is_senior_or_pwd
           : Boolean(loadedOcr?.is_senior_or_pwd);
+      const loadedDiscountType = normalizeStatutoryDiscountType(
+        raw.statutory_discount_type ?? loadedOcr?.statutory_discount_type,
+        loadedSenior
+      );
+      const loadedEligibility = normalizeEligibilitySnapshot(
+        (row as Record<string, unknown>).eligibility_snapshot ??
+          raw.eligibility_snapshot ??
+          loadedOcr?.eligibility_snapshot
+      );
 
       const catalog = await loadPackageCatalog(supabase);
 
@@ -159,10 +196,12 @@ export default function NegotiationBriefPage({
 
       setOcr(loadedOcr);
       setOverrides(loadedOverrides);
-      setIsSenior(loadedSenior);
+      setStatutoryDiscountType(loadedDiscountType);
+      setEligibilitySnapshot(loadedEligibility);
       setRepresentativeName(loadedOcr?.patient_name || "");
       setPackages(catalog.packages);
       setStatutoryRule(catalog.statutoryRule);
+      setStatutoryRules(catalog.statutoryRules ?? []);
       setLoadState("ready");
     })();
 
@@ -175,12 +214,24 @@ export default function NegotiationBriefPage({
     if (!ocr) return null;
     return runAuditEngine(applyOverridesToBill(ocr, overrides), {
       auditId: id,
-      isSeniorOrPwdOverride: isSenior,
+      statutoryDiscountType,
+      isSeniorOrPwdOverride: statutoryDiscountType !== "regular",
+      eligibilitySnapshot,
       referencePackages: packages,
       statutoryRule,
+      statutoryRules,
       manualStatusOverrides: statusOverridesFrom(overrides),
     });
-  }, [ocr, overrides, isSenior, packages, statutoryRule, id]);
+  }, [
+    ocr,
+    overrides,
+    statutoryDiscountType,
+    eligibilitySnapshot,
+    packages,
+    statutoryRule,
+    statutoryRules,
+    id,
+  ]);
 
   const briefMeta: NegotiationBriefMeta = useMemo(
     () => ({
@@ -190,7 +241,8 @@ export default function NegotiationBriefPage({
       preparedDate,
       admissionDate: ocr?.admission_date,
       dischargeDate: ocr?.discharge_date,
-      isSeniorOrPwd: isSenior,
+      isSeniorOrPwd: statutoryDiscountType !== "regular",
+      statutoryDiscountType,
     }),
     [
       representativeName,
@@ -199,7 +251,7 @@ export default function NegotiationBriefPage({
       preparedDate,
       ocr?.admission_date,
       ocr?.discharge_date,
-      isSenior,
+      statutoryDiscountType,
     ]
   );
 
@@ -393,18 +445,33 @@ export default function NegotiationBriefPage({
               </div>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 pt-1 text-xs font-semibold text-[#1E293B]">
-              <input
-                type="checkbox"
-                checked={isSenior}
-                onChange={(e) => setIsSenior(e.target.checked)}
-                className="h-4 w-4 rounded border-[#CBD5E1] text-[#2563EB]"
-              />
-              <span>
-                Include Senior Citizen (RA 9994) / PWD (RA 10754) 20% + 12% VAT
-                statutory citation
+            <div className="space-y-1.5 pt-1">
+              <span className="block text-[11px] font-bold text-[#64748B]">
+                Statutory Privilege Citation (Mutually Exclusive)
               </span>
-            </label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(
+                  [
+                    { id: "regular", label: "Regular" },
+                    { id: "senior", label: "Senior Citizen (RA 9994)" },
+                    { id: "pwd", label: "PWD (RA 10754)" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setStatutoryDiscountType(opt.id)}
+                    className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+                      statutoryDiscountType === opt.id
+                        ? "bg-[#2563EB] text-white"
+                        : "border border-[#CBD5E1] bg-[#F3F4F6] text-[#1E293B] hover:border-[#2563EB]"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>

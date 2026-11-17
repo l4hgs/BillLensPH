@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { runAuditEngine } from "@/lib/auditEngine";
-import { mergeExtractedBills } from "@/lib/gemini";
+import {
+  normalizeStatutoryDiscountType,
+  runAuditEngine,
+} from "@/lib/auditEngine";
+import {
+  detectVatExemptFromDescription,
+  GEMINI_FLASH_MODELS,
+  getGeminiModelFallbackList,
+  mergeExtractedBills,
+  sanitizeExtractedBill,
+} from "@/lib/gemini";
 import {
   bestPackageForDiagnosis,
   findMatchingAlias,
@@ -9,12 +18,14 @@ import {
   normalizeSeedPackage,
   parseCatalogCsv,
   selectActivePackagesForDate,
+  selectStatutoryRuleForDate,
   toCatalogPackage,
 } from "@/lib/packageCatalog";
 import {
   ensureBillPackagesInCatalog,
   hasCatalogMatchForBill,
 } from "@/lib/caseRateDiscovery";
+import { buildPlainTextNegotiationBrief } from "@/components/audit/NegotiationBriefDocument";
 import type {
   CatalogPackage,
   ExtractedBillData,
@@ -213,6 +224,10 @@ describe("Golden fixture bills (runAuditEngine)", () => {
     expect(
       excessFlags.some((f) => f.title.includes("Professional Fee (PF)"))
     ).toBe(true);
+    // HCI shortfall (23,250 - 15,000 = 8,250) + PF shortfall (15,500 - 10,000 = 5,500) = 13,750
+    // Fair out-of-pocket drops from 25,000 due by the 13,750 HCI+PF gap to 11,250
+    expect(res.case_rate_shortfall).toBe(13750);
+    expect(res.fair_out_of_pocket).toBe(11250);
   });
 
   it("3. Flags missed Senior/PWD statutory discount and honors parameterized statutory_rules", () => {
@@ -506,7 +521,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
           quantity: 1,
           unit_price: 5000,
           total_amount: 5000,
-          philhealth_deduction: 3600,
+          philhealth_deducted: 3600,
           balance: 1400,
         },
       ],
@@ -539,6 +554,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
 
     expect(discovered).toHaveLength(1);
     expect(discovered[0].code).toBe("N10");
+    expect(discovered[0].is_verified).toBe(false);
     expect(hasCatalogMatchForBill(bill, packages)).toBe(true);
 
     const result = runAuditEngine(bill, {
@@ -547,6 +563,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
     });
 
     expect(result.detected_case_packages[0]?.code).toBe("N10");
+    expect(result.detected_case_packages[0]?.is_verified).toBe(false);
     expect(result.line_items[0].status).toBe("review_worthy");
     expect(result.disputed_overcharge_total).toBe(950);
   });
@@ -630,5 +647,301 @@ describe("Versioned packages & Multi-page OCR merge", () => {
     expect(res.statutory_discount_type).toBe("pwd");
     expect(res.senior_pwd_savings).toBeCloseTo(1000, 2);
     expect(res.fair_out_of_pocket).toBeCloseTo(4000, 2);
+  });
+
+  it("explicitly cites RA 10754 and PDAO guidelines for PWD audits (never defaulting to RA 9994 / OSCA)", () => {
+    const bill: ExtractedBillData = {
+      hospital_name: "Chong Hua Hospital",
+      patient_name: "ANA SANTOS",
+      statement_number: "CHH-2026-102",
+      case_rate_codes_detected: [],
+      statutory_discount_type: "pwd",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Private Room & Diagnostic Workup",
+          category: "Room & Board",
+          quantity: 1,
+          unit_price: 11200,
+          total_amount: 11200,
+          philhealth_deducted: 0,
+          discount_applied: 0,
+          balance: 11200,
+        },
+      ],
+      gross_total: 11200,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 11200,
+    };
+
+    const pwdAudit = runAuditEngine(bill, {
+      auditId: "fixture-pwd-citation",
+      statutoryDiscountType: "pwd",
+      referencePackages: CATALOG,
+    });
+
+    expect(pwdAudit.statutory_discount_type).toBe("pwd");
+    const missingFlag = pwdAudit.flags.find(
+      (f) => f.type === "missing_statutory_discount"
+    );
+    expect(missingFlag).toBeDefined();
+    expect(missingFlag?.title).toContain("PWD (RA 10754)");
+    expect(missingFlag?.description).toContain("RA 10754");
+    expect(missingFlag?.description).toContain("PDAO");
+    expect(missingFlag?.description).not.toContain("RA 9994");
+    expect(pwdAudit.negotiation_brief_summary).toContain("RA 10754");
+    expect(pwdAudit.negotiation_brief_summary).toContain("PDAO");
+    expect(pwdAudit.negotiation_brief_summary).not.toContain("OSCA");
+
+    const plainBrief = buildPlainTextNegotiationBrief(pwdAudit, {
+      representativeName: "Ana Santos",
+      relationship: "Patient",
+      contactInfo: "0917-000-0000",
+      preparedDate: "November 17, 2026",
+      isSeniorOrPwd: true,
+      statutoryDiscountType: "pwd",
+    });
+    expect(plainBrief).toContain("Republic Act No. 10754");
+    expect(plainBrief).toContain("Persons with Disability Affairs Office (PDAO)");
+    expect(plainBrief).not.toContain("Republic Act No. 9994");
+    expect(normalizeStatutoryDiscountType("regular")).toBe("regular");
+    expect(normalizeStatutoryDiscountType("none")).toBe("regular");
+  });
+
+  it("extracts is_vat_exempt on OCR line items with VX/VAT-exempt markers and statutory exempt drugs", () => {
+    expect(detectVatExemptFromDescription("Losartan 50mg Tablet [VX]")).toBe(
+      true
+    );
+    expect(
+      detectVatExemptFromDescription("Metformin 500mg Film-Coated Tablet")
+    ).toBe(true);
+    expect(detectVatExemptFromDescription("Standard Sterile Gauze Pad")).toBe(
+      false
+    );
+
+    const sanitized = sanitizeExtractedBill({
+      hospital_name: "PGH",
+      statutory_discount_type: "pwd",
+      line_items: [
+        {
+          id: "raw-1",
+          description: "Amlodipine 10mg Tab (VX)",
+          category: "Drugs/Medicines",
+          quantity: 10,
+          unit_price: 50,
+          total_amount: 500,
+        },
+        {
+          id: "raw-2",
+          description: "Private Ward Room Charge",
+          category: "Room & Board",
+          quantity: 1,
+          unit_price: 5600,
+          total_amount: 5600,
+        },
+      ],
+      gross_total: 6100,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 6100,
+    });
+
+    expect(sanitized.line_items[0].is_vat_exempt).toBe(true);
+    expect(sanitized.line_items[1].is_vat_exempt).toBe(false);
+
+    const audit = runAuditEngine(sanitized, {
+      auditId: "fixture-ocr-vat-exempt",
+      statutoryDiscountType: "pwd",
+      referencePackages: CATALOG,
+    });
+    // Item 1 (500 VAT-exempt): 20% discount = 100
+    // Item 2 (5600 VAT-inclusive): 5600 / 1.12 = 5000 (600 VAT) + 1000 (20% discount) = 1600
+    // Total statutory savings = 100 + 1600 = 1700 -> Fair OOP = 6100 - 1700 = 4400
+    expect(audit.senior_pwd_savings).toBeCloseTo(1700, 2);
+    expect(audit.fair_out_of_pocket).toBeCloseTo(4400, 2);
+  });
+
+  it("selects statutory_rules by the bill's statement/discharge date and consolidates Gemini model fallbacks", () => {
+    const rules: StatutoryRule[] = [
+      {
+        rule_code: "SENIOR_PWD",
+        label: "Legacy 2016 Rule",
+        vat_divisor: 1.12,
+        discount_rate: 0.2,
+        incomplete_threshold: 0.8,
+        eligible_categories: ["Laboratory/Diagnostics"],
+        citation: "RA 9994 / RA 10754 (2016 IRR)",
+        effective_from: "2016-03-23",
+        effective_to: "2024-12-31",
+      },
+      {
+        rule_code: "SENIOR_PWD",
+        label: "Updated 2025 Circular Rule",
+        vat_divisor: 1.12,
+        discount_rate: 0.25,
+        incomplete_threshold: 0.8,
+        eligible_categories: ["Laboratory/Diagnostics"],
+        citation: "RA 9994 / RA 10754 (2025 Joint Circular)",
+        effective_from: "2025-01-01",
+        effective_to: null,
+      },
+    ];
+
+    expect(selectStatutoryRuleForDate(rules, "2024-06-15")?.discount_rate).toBe(
+      0.2
+    );
+    expect(selectStatutoryRuleForDate(rules, "2026-03-10")?.discount_rate).toBe(
+      0.25
+    );
+
+    const bill2024: ExtractedBillData = {
+      hospital_name: "Manila Doctors Hospital",
+      discharge_date: "2024-06-15",
+      case_rate_codes_detected: [],
+      statutory_discount_type: "senior",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Diagnostic Lab Panel",
+          category: "Laboratory/Diagnostics",
+          quantity: 1,
+          unit_price: 11200,
+          total_amount: 11200,
+          balance: 11200,
+        },
+      ],
+      gross_total: 11200,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 11200,
+    };
+
+    const res2024 = runAuditEngine(bill2024, {
+      auditId: "test-dated-rule-2024",
+      statutoryDiscountType: "senior",
+      statutoryRules: rules,
+      referencePackages: CATALOG,
+    });
+    expect(res2024.senior_pwd_savings).toBeCloseTo(3200, 2);
+
+    const res2026 = runAuditEngine(
+      { ...bill2024, discharge_date: "2026-03-10" },
+      {
+        auditId: "test-dated-rule-2026",
+        statutoryDiscountType: "senior",
+        statutoryRules: rules,
+        referencePackages: CATALOG,
+      }
+    );
+    expect(res2026.senior_pwd_savings).toBeCloseTo(3700, 2);
+
+    const fallbackModels = getGeminiModelFallbackList("gemini-custom-test");
+    expect(fallbackModels[0]).toBe("gemini-custom-test");
+    expect(fallbackModels).toContain(GEMINI_FLASH_MODELS[0]);
+  });
+
+  it("enforces No Balance Billing (NBB) Zero Co-Payment in basic/ward accommodation vs. private-room co-pay rules and MDR reminder", () => {
+    const wardBill: ExtractedBillData = {
+      hospital_name: "Philippine General Hospital",
+      patient_name: "ROSA DELA CRUZ",
+      statement_number: "PGH-2026-8801",
+      case_rate_codes_detected: ["44970"],
+      statutory_discount_type: "regular",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Basic Charity Ward Room & Board (3 Days)",
+          category: "Room & Board",
+          quantity: 3,
+          unit_price: 2000,
+          total_amount: 6000,
+          philhealth_deducted: 0,
+          discount_applied: 0,
+          balance: 6000,
+        },
+        {
+          id: "item-2",
+          description: "Operating Room & Surgical Care",
+          category: "Operating Room",
+          quantity: 1,
+          unit_price: 30000,
+          total_amount: 30000,
+          philhealth_deducted: 30000,
+          discount_applied: 0,
+          balance: 0,
+        },
+      ],
+      gross_total: 36000,
+      philhealth_total: 30000,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 6000,
+    };
+
+    // Case A: Indirect/NBB member in Basic Ward -> remaining ₱6,000 balance is flagged as NBB violation -> Fair OOP = ₱0
+    const nbbWardResult = runAuditEngine(wardBill, {
+      auditId: "test-nbb-basic-ward",
+      referencePackages: CATALOG,
+      eligibilitySnapshot: {
+        contributor_type: "indirect_nbb",
+        accommodation_type: "basic_ward",
+        has_mdr_or_pin: false,
+        facility_level: "level_3",
+      },
+    });
+
+    const nbbFlag = nbbWardResult.flags.find((f) => f.type === "nbb_violation");
+    expect(nbbFlag).toBeDefined();
+    expect(nbbFlag?.severity).toBe("high");
+    expect(nbbFlag?.description).toContain("2016-0020");
+    expect(nbbFlag?.description).toContain("11223");
+    expect(nbbWardResult.nbb_savings).toBe(6000);
+    expect(nbbWardResult.fair_out_of_pocket).toBe(0);
+
+    // Also verifies missing MDR/PIN pre-discharge reminder
+    const mdrFlag = nbbWardResult.flags.find(
+      (f) =>
+        f.type === "compliance_note" &&
+        f.title.includes("MDR / PIN")
+    );
+    expect(mdrFlag).toBeDefined();
+    expect(mdrFlag?.description).toContain("PhilHealth Member Portal");
+    expect(mdrFlag?.description).toContain("eGovPH Super App");
+
+    const briefText = buildPlainTextNegotiationBrief(nbbWardResult, {
+      representativeName: "Rosa Dela Cruz",
+      relationship: "Patient",
+      contactInfo: "0917-123-4567",
+      preparedDate: "November 17, 2026",
+      isSeniorOrPwd: false,
+      statutoryDiscountType: "regular",
+    });
+    expect(briefText).toContain("PhilHealth Circular 2016-0020");
+    expect(briefText).toContain("Republic Act No. 11223");
+
+    // Case B: Indirect/NBB member in Non-Basic Private Room -> NBB zero co-pay is waived, patient pays remaining ₱6,000 co-pay
+    const privateRoomResult = runAuditEngine(wardBill, {
+      auditId: "test-nbb-private-room",
+      referencePackages: CATALOG,
+      eligibilitySnapshot: {
+        contributor_type: "indirect_nbb",
+        accommodation_type: "non_basic_private",
+        has_mdr_or_pin: true,
+        facility_level: "level_3",
+      },
+    });
+
+    expect(
+      privateRoomResult.flags.some((f) => f.type === "nbb_violation")
+    ).toBe(false);
+    expect(privateRoomResult.nbb_savings).toBe(0);
+    expect(privateRoomResult.fair_out_of_pocket).toBe(6000);
+    expect(
+      privateRoomResult.flags.some(
+        (f) =>
+          f.type === "compliance_note" &&
+          f.title.includes("Private Room Co-Payment Applies")
+      )
+    ).toBe(true);
   });
 });

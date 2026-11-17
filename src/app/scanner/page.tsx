@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Image as ImageIcon,
   Camera,
@@ -9,12 +10,17 @@ import {
   ShieldCheck,
   ArrowRight,
   AlertCircle,
+  RotateCcw,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScannerViewfinder } from "@/components/scanner/ScannerViewfinder";
 import { StatementStagingCard } from "@/components/scanner/StatementStagingCard";
 import { createClient } from "@/lib/supabase/client";
+import {
+  DEFAULT_ELIGIBILITY_SNAPSHOT,
+  normalizeEligibilitySnapshot,
+} from "@/lib/auditEngine";
 import {
   compressBillImage,
   isSupportedBillFile,
@@ -25,9 +31,12 @@ import type {
   PipelineStage,
   StagedFileMeta,
   AuditEngineResult,
+  StatutoryDiscountType,
+  EligibilitySnapshot,
 } from "@/types/audit";
 
 export default function ScannerPage() {
+  const router = useRouter();
   const [isDragging, setIsDragging] = useState(false);
 
   const [pages, setPages] = useState<ScannedPage[]>([]);
@@ -39,7 +48,10 @@ export default function ScannerPage() {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [stagedAuditId, setStagedAuditId] = useState<string | null>(null);
-  const [isSeniorOrPwd, setIsSeniorOrPwd] = useState<boolean>(false);
+  const [statutoryDiscountType, setStatutoryDiscountType] =
+    useState<StatutoryDiscountType>("regular");
+  const [eligibilitySnapshot, setEligibilitySnapshot] =
+    useState<EligibilitySnapshot>(DEFAULT_ELIGIBILITY_SNAPSHOT);
   const [isAnalyzingOcr, setIsAnalyzingOcr] = useState<boolean>(false);
   const [ocrAuditResult, setOcrAuditResult] = useState<AuditEngineResult | null>(null);
 
@@ -51,6 +63,34 @@ export default function ScannerPage() {
   useEffect(() => {
     pagesRef.current = pages;
   }, [pages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select(
+            "contributor_type, accommodation_type, has_mdr_or_pin, facility_level"
+          )
+          .eq("id", user.id)
+          .maybeSingle();
+        if (profile && !cancelled) {
+          setEligibilitySnapshot(normalizeEligibilitySnapshot(profile));
+        }
+      } catch {
+        // Optional profile columns before migration 007
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -87,7 +127,7 @@ export default function ScannerPage() {
         for (let i = 0; i < incomingFiles.length; i++) {
           const currentFile = incomingFiles[i];
           setStatusMessage(
-            `Optimizing page ${i + 1} of ${incomingFiles.length} (${currentFile.name})...`
+            `Compressing image (${i + 1} of ${incomingFiles.length}: ${currentFile.name})...`
           );
 
           const compressed = await compressBillImage(currentFile);
@@ -308,33 +348,68 @@ export default function ScannerPage() {
         page_count: uploadedFilesMeta.length,
         storage_paths: uploadedFilesMeta.map((f) => f.path),
         files: uploadedFilesMeta as unknown as Json,
+        statutory_discount_type: statutoryDiscountType,
+        is_senior_or_pwd: statutoryDiscountType !== "regular",
+        eligibility_snapshot: eligibilitySnapshot as unknown as Json,
         uploaded_at: new Date().toISOString(),
       };
 
-      const { data: insertedAudit, error: dbError } = await supabase
+      const insertPayload = {
+        user_id: user.id,
+        hospital_name: resolvedHospitalName,
+        total_billed: 0,
+        estimated_out_of_pocket: 0,
+        eligibility_snapshot: eligibilitySnapshot as unknown as Json,
+        raw_extracted_data: stagedPayload,
+        audit_results: {
+          stage: "week2_staged",
+          ready_for_gemini_ocr: true,
+        },
+      };
+
+      let { data: insertedAudit, error: dbError } = await supabase
         .from("audits")
-        .insert({
-          user_id: user.id,
-          hospital_name: resolvedHospitalName,
-          total_billed: 0,
-          estimated_out_of_pocket: 0,
-          raw_extracted_data: stagedPayload,
-          audit_results: {
-            stage: "week2_staged",
-            ready_for_gemini_ocr: true,
-          },
-        })
+        .insert(insertPayload)
         .select("id")
         .single();
+
+      if (dbError && /eligibility_snapshot/i.test(dbError.message)) {
+        const fallbackInsert = { ...insertPayload };
+        delete (fallbackInsert as Record<string, unknown>).eligibility_snapshot;
+        const retryInsert = await supabase
+          .from("audits")
+          .insert(fallbackInsert)
+          .select("id")
+          .single();
+        insertedAudit = retryInsert.data;
+        dbError = retryInsert.error;
+      }
 
       if (dbError) {
         throw new Error(`Database staging failed: ${dbError.message}`);
       }
 
-      setUploadProgress(100);
-      setStage("completed");
-      setStagedAuditId(insertedAudit?.id ?? null);
-      setStatusMessage("Bill uploaded & staged for AI OCR audit!");
+      // Best-effort save default eligibility preferences on profile
+      try {
+        await supabase
+          .from("profiles")
+          .update({
+            contributor_type: eligibilitySnapshot.contributor_type,
+            accommodation_type: eligibilitySnapshot.accommodation_type,
+            has_mdr_or_pin: eligibilitySnapshot.has_mdr_or_pin,
+            facility_level: eligibilitySnapshot.facility_level,
+          })
+          .eq("id", user.id);
+      } catch {
+        // Ignore if migration 007 not yet applied
+      }
+
+      const newAuditId = insertedAudit?.id ?? null;
+      setStagedAuditId(newAuditId);
+      setUploadProgress(90);
+
+      // Automatically trigger Gemini Vision OCR & PhilHealth ACR audit immediately after staging
+      await runOcrForAudit(newAuditId);
     } catch (err) {
       const msg =
         err instanceof Error
@@ -349,22 +424,33 @@ export default function ScannerPage() {
     stage === "compressing" ||
     stage === "uploading" ||
     stage === "staging_db" ||
+    stage === "analyzing_ocr" ||
     isAnalyzingOcr;
 
-  const handleRunAIOcr = async () => {
-    if (!stagedAuditId && pages.length === 0) return;
+  const runOcrForAudit = async (overrideAuditId?: string | null) => {
+    const targetAuditId = overrideAuditId ?? stagedAuditId;
+    if (!targetAuditId && pages.length === 0) return;
 
     setErrorMessage(null);
     setIsAnalyzingOcr(true);
-    setStatusMessage("Extracting line items and auditing with Gemini Flash...");
+    setStage("analyzing_ocr");
+    setStatusMessage("Extracting line items with Gemini Vision...");
+
+    const ruleStepTimer = window.setTimeout(() => {
+      setStatusMessage(
+        "Cross-referencing PhilHealth ACR & statutory rules..."
+      );
+    }, 1800);
 
     try {
       let payload: Record<string, unknown> = {
-        isSeniorOrPwd,
+        statutoryDiscountType,
+        isSeniorOrPwd: statutoryDiscountType !== "regular",
+        eligibilitySnapshot,
       };
 
-      if (stagedAuditId) {
-        payload.auditId = stagedAuditId;
+      if (targetAuditId) {
+        payload.auditId = targetAuditId;
       } else if (pages.length > 0) {
         const encodedPages: Array<{ imageBase64: string; mimeType: string }> =
           [];
@@ -399,13 +485,36 @@ export default function ScannerPage() {
         throw new Error(data.error || "OCR extraction failed.");
       }
 
+      setUploadProgress(100);
       setOcrAuditResult(data.audit);
-      setStatusMessage("AI PhilHealth Audit Complete!");
+      setStage("completed");
+      setStatusMessage("AI PhilHealth Audit Complete! Redirecting to Studio...");
+
+      const resolvedId: string | undefined =
+        data.audit?.audit_id || data.auditId || targetAuditId || undefined;
+      if (resolvedId && !resolvedId.startsWith("audit-")) {
+        router.push(`/audits/${resolvedId}`);
+      }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to analyze bill with AI.";
+      const msg =
+        err instanceof Error ? err.message : "Failed to analyze bill with AI.";
+      setStage(targetAuditId ? "completed" : "error");
       setErrorMessage(msg);
     } finally {
+      window.clearTimeout(ruleStepTimer);
       setIsAnalyzingOcr(false);
+    }
+  };
+
+  const handleRunAIOcr = async () => {
+    await runOcrForAudit(stagedAuditId);
+  };
+
+  const handleRetryScan = async () => {
+    if (stagedAuditId) {
+      await runOcrForAudit(stagedAuditId);
+    } else {
+      await handleUploadAndStage();
     }
   };
 
@@ -471,17 +580,29 @@ export default function ScannerPage() {
           <div className="flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-rose-900">Upload Notice</p>
+              <p className="font-bold text-rose-900">Scan / OCR Notice</p>
               <p className="text-rose-700 mt-0.5">{errorMessage}</p>
-              {errorMessage.toLowerCase().includes("signed in") && (
-                <Link
-                  href="/auth?next=/scanner"
-                  className="inline-flex items-center gap-1 mt-2 font-bold text-[#2563EB] hover:underline"
-                >
-                  <span>Go to Sign In</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              )}
+              <div className="flex flex-wrap items-center gap-3 mt-2">
+                {pages.length > 0 && !isBusy && (
+                  <button
+                    type="button"
+                    onClick={handleRetryScan}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-rose-700 px-3 py-1 text-xs font-bold text-white hover:bg-rose-800 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Retry Scan</span>
+                  </button>
+                )}
+                {errorMessage.toLowerCase().includes("signed in") && (
+                  <Link
+                    href="/auth?next=/scanner"
+                    className="inline-flex items-center gap-1 font-bold text-[#2563EB] hover:underline"
+                  >
+                    <span>Go to Sign In</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
           <button
@@ -504,9 +625,13 @@ export default function ScannerPage() {
         stagedAuditId={stagedAuditId}
         onUploadAndStage={handleUploadAndStage}
         onResetAll={handleResetAll}
-        isSeniorOrPwd={isSeniorOrPwd}
-        setIsSeniorOrPwd={setIsSeniorOrPwd}
+        statutoryDiscountType={statutoryDiscountType}
+        setStatutoryDiscountType={setStatutoryDiscountType}
+        eligibilitySnapshot={eligibilitySnapshot}
+        setEligibilitySnapshot={setEligibilitySnapshot}
         onRunAIOcr={handleRunAIOcr}
+        onRetryScan={handleRetryScan}
+        hasError={Boolean(errorMessage)}
         isAnalyzingOcr={isAnalyzingOcr}
         ocrAuditResult={ocrAuditResult}
       />

@@ -10,7 +10,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { formatPHP } from "@/lib/utils";
-import type { AuditEngineResult, ExtractedBillData } from "@/types/audit";
+import { normalizeStatutoryDiscountType } from "@/lib/auditEngine";
+import type {
+  AuditEngineResult,
+  ExtractedBillData,
+  StatutoryDiscountType,
+} from "@/types/audit";
 
 export interface NegotiationBriefMeta {
   representativeName: string;
@@ -20,6 +25,7 @@ export interface NegotiationBriefMeta {
   admissionDate?: string;
   dischargeDate?: string;
   isSeniorOrPwd: boolean;
+  statutoryDiscountType?: StatutoryDiscountType;
 }
 
 interface NegotiationBriefDocumentProps {
@@ -36,7 +42,26 @@ export function buildPlainTextNegotiationBrief(
     (item) => item.status === "review_worthy"
   );
   const potentialSavings =
-    audit.disputed_overcharge_total + audit.senior_pwd_savings;
+    audit.disputed_overcharge_total +
+    audit.senior_pwd_savings +
+    (audit.case_rate_shortfall ?? 0) +
+    (audit.nbb_savings ?? 0);
+
+  const discountType = normalizeStatutoryDiscountType(
+    meta.statutoryDiscountType ?? audit.statutory_discount_type,
+    meta.isSeniorOrPwd || audit.senior_pwd_savings > 0
+  );
+  const isPwd = discountType === "pwd";
+  const hasStatutoryPrivilege =
+    discountType !== "regular" ||
+    meta.isSeniorOrPwd ||
+    audit.senior_pwd_savings > 0;
+  const hasNbbEntitlement =
+    (audit.nbb_savings ?? 0) > 0 ||
+    ((audit.eligibility_snapshot?.contributor_type === "indirect_nbb" ||
+      audit.eligibility_snapshot?.contributor_type === "lifetime" ||
+      hasStatutoryPrivilege) &&
+      audit.eligibility_snapshot?.accommodation_type === "basic_ward");
 
   const pkgLines =
     audit.detected_case_packages.length > 0
@@ -92,8 +117,18 @@ export function buildPlainTextNegotiationBrief(
     `   • Total Gross Hospital Bill:          ${formatPHP(audit.gross_total)}`,
     `   • Hospital Stated Net Balance:        ${formatPHP(audit.actual_out_of_pocket)}`,
     `   • PhilHealth Case Rate Benefit:       ${formatPHP(audit.philhealth_coverage_total)}`,
-    `   • Senior Citizen / PWD Savings:       ${formatPHP(audit.senior_pwd_savings)}`,
+    `   • ${isPwd ? "PWD Statutory Savings (RA 10754):" : "Senior Citizen / PWD Savings:    "}   ${formatPHP(audit.senior_pwd_savings)}`,
     `   • Flagged Unbundled / Review Items:   ${formatPHP(audit.disputed_overcharge_total)}`,
+    ...(audit.case_rate_shortfall && audit.case_rate_shortfall > 0
+      ? [
+          `   • Under-Deducted Case Rate Shortfall: ${formatPHP(audit.case_rate_shortfall)}`,
+        ]
+      : []),
+    ...(audit.nbb_savings && audit.nbb_savings > 0
+      ? [
+          `   • No Balance Billing (NBB) Relief:    ${formatPHP(audit.nbb_savings)}`,
+        ]
+      : []),
     `   • Total Identified Adjustments:       ${formatPHP(potentialSavings)}`,
     `   • Estimated Fair Balance Due:         ${formatPHP(audit.fair_out_of_pocket)}`,
     "",
@@ -105,9 +140,16 @@ export function buildPlainTextNegotiationBrief(
     "",
     "4. STATUTORY & REGULATORY BASIS",
     "   • PhilHealth All Case Rates (ACR) Policy: Mandatory operating room, delivery room, and ward supplies, diagnostic tests, and bundled drugs included in the Health Care Institution (HCI) fee should not be billed separately as out-of-pocket charges.",
-    ...(meta.isSeniorOrPwd || audit.senior_pwd_savings > 0
+    ...(hasStatutoryPrivilege
       ? [
-          "   • RA 9994 (Expanded Senior Citizens Act) / RA 10754 (PWD Act), PhilHealth Advisory No. 2023-0036 & PhilHealth Circular 0056-2012: Entitles the patient to a 12% VAT exemption FIRST, followed by a mandatory 20% discount on the VAT-exempt balance across HCI and Professional Fees, with PhilHealth Case Rate benefits deducted LAST. Unresolved violations may be escalated to LGU OSCA/PDAO or the PhilHealth Callback Channel (0917-898-7442).",
+          isPwd
+            ? "   • Republic Act No. 10754 (An Act Expanding the Benefits and Privileges of Persons with Disability), PDAO Guidelines, PhilHealth Advisory No. 2023-0036 & PhilHealth Circular 0056-2012: Entitles the PWD patient to a 12% VAT exemption FIRST, followed by a mandatory 20% discount on the VAT-exempt balance across HCI and Professional Fees, with PhilHealth Case Rate benefits deducted LAST. Unresolved violations may be escalated to the local LGU Persons with Disability Affairs Office (PDAO) or the PhilHealth Callback Channel (0917-898-7442)."
+            : "   • Republic Act No. 9994 (Expanded Senior Citizens Act), OSCA Guidelines, PhilHealth Advisory No. 2023-0036 & PhilHealth Circular 0056-2012: Entitles the Senior Citizen patient to a 12% VAT exemption FIRST, followed by a mandatory 20% discount on the VAT-exempt balance across HCI and Professional Fees, with PhilHealth Case Rate benefits deducted LAST. Unresolved violations may be escalated to the local LGU Office for Senior Citizens Affairs (OSCA) or the PhilHealth Callback Channel (0917-898-7442).",
+        ]
+      : []),
+    ...(hasNbbEntitlement
+      ? [
+          "   • PhilHealth Circular 2016-0020 & Republic Act No. 11223 (Universal Health Care Act — No Balance Billing / Zero Co-Payment Policy): Qualified Indirect Contributors (Indigent, Sponsored, Kasambahay, Senior Citizen under RA 10645, Solo Parent under PC 2026-0015, PWD under PC 2026-0017) and Lifetime Members admitted in basic/ward accommodation are entitled to Zero Co-Payment (₱0.00 out-of-pocket) for covered confinement services.",
         ]
       : []),
     "   • RA 11463 (Malasakit Centers Act): Please issue an updated, certified Statement of Account reflecting reconciled PhilHealth and statutory deductions to support our Medical Social Service / Malasakit / DSWD / PCSO guarantee letter endorsement.",
@@ -138,7 +180,26 @@ export function NegotiationBriefDocument({
     (item) => item.status === "out_of_pocket"
   );
   const potentialSavings =
-    audit.disputed_overcharge_total + audit.senior_pwd_savings;
+    audit.disputed_overcharge_total +
+    audit.senior_pwd_savings +
+    (audit.case_rate_shortfall ?? 0) +
+    (audit.nbb_savings ?? 0);
+
+  const discountType = normalizeStatutoryDiscountType(
+    meta.statutoryDiscountType ?? audit.statutory_discount_type,
+    meta.isSeniorOrPwd || audit.senior_pwd_savings > 0
+  );
+  const isPwd = discountType === "pwd";
+  const hasStatutoryPrivilege =
+    discountType !== "regular" ||
+    meta.isSeniorOrPwd ||
+    audit.senior_pwd_savings > 0;
+  const hasNbbEntitlement =
+    (audit.nbb_savings ?? 0) > 0 ||
+    ((audit.eligibility_snapshot?.contributor_type === "indirect_nbb" ||
+      audit.eligibility_snapshot?.contributor_type === "lifetime" ||
+      hasStatutoryPrivilege) &&
+      audit.eligibility_snapshot?.accommodation_type === "basic_ward");
 
   const admissionDate = meta.admissionDate || ocr?.admission_date;
   const dischargeDate = meta.dischargeDate || ocr?.discharge_date;
@@ -227,9 +288,11 @@ export function NegotiationBriefDocument({
               Statutory Status:{" "}
             </span>
             <span className="font-bold text-[#1E293B]">
-              {meta.isSeniorOrPwd || audit.senior_pwd_savings > 0
-                ? "Senior Citizen (60+) / PWD (RA 9994 / RA 10754)"
-                : "Standard PhilHealth Member / Dependent"}
+              {isPwd
+                ? "Person with Disability — PWD (RA 10754 / PDAO)"
+                : hasStatutoryPrivilege
+                  ? "Senior Citizen (60+) (RA 9994 / OSCA)"
+                  : "Standard PhilHealth Member / Dependent"}
             </span>
           </p>
         </div>
@@ -464,23 +527,69 @@ export function NegotiationBriefDocument({
             should not be separately billed as out-of-pocket charges without
             documented clinical justification.
           </li>
-          {(meta.isSeniorOrPwd || audit.senior_pwd_savings > 0) && (
+          {hasStatutoryPrivilege && (
+            <li>
+              {isPwd ? (
+                <>
+                  <strong>
+                    Republic Act No. 10754 (An Act Expanding the Benefits and
+                    Privileges of Persons with Disability), PDAO Guidelines,
+                    PhilHealth Advisory No. 2023-0036 &amp; PhilHealth Circular
+                    0056-2012:
+                  </strong>{" "}
+                  Entitles qualified Person with Disability (PWD) patients to a{" "}
+                  <strong>12% Value-Added Tax (VAT) exemption FIRST</strong>,
+                  followed by a mandatory <strong>20% discount</strong> on the
+                  VAT-exempt balance across hospital (HCI) charges, diagnostic
+                  tests, medicines, and physicians&apos; professional fees (PF),
+                  with{" "}
+                  <strong>PhilHealth Case Rate benefits deducted LAST</strong>.
+                  Any refusal to apply the sequential discount prior to
+                  discharge may be reported to the local LGU{" "}
+                  <strong>
+                    Persons with Disability Affairs Office (PDAO)
+                  </strong>{" "}
+                  or the{" "}
+                  <strong>PhilHealth Callback Channel (0917-898-7442)</strong>.
+                </>
+              ) : (
+                <>
+                  <strong>
+                    Republic Act No. 9994 (Expanded Senior Citizens Act), OSCA
+                    Guidelines, PhilHealth Advisory No. 2023-0036 &amp;
+                    PhilHealth Circular 0056-2012:
+                  </strong>{" "}
+                  Entitles qualified Senior Citizen (60+) patients to a{" "}
+                  <strong>12% Value-Added Tax (VAT) exemption FIRST</strong>,
+                  followed by a mandatory <strong>20% discount</strong> on the
+                  VAT-exempt balance across hospital (HCI) charges, diagnostic
+                  tests, medicines, and physicians&apos; professional fees (PF),
+                  with{" "}
+                  <strong>PhilHealth Case Rate benefits deducted LAST</strong>.
+                  Any refusal to apply the sequential discount prior to
+                  discharge may be reported to the local LGU{" "}
+                  <strong>
+                    Office for Senior Citizens Affairs (OSCA)
+                  </strong>{" "}
+                  or the{" "}
+                  <strong>PhilHealth Callback Channel (0917-898-7442)</strong>.
+                </>
+              )}
+            </li>
+          )}
+          {hasNbbEntitlement && (
             <li>
               <strong>
-                Republic Act No. 9994 (Expanded Senior Citizens Act), RA 10754
-                (PWD Act), PhilHealth Advisory No. 2023-0036 &amp; PhilHealth
-                Circular 0056-2012:
+                PhilHealth Circular 2016-0020 &amp; Republic Act No. 11223
+                (Universal Health Care Act — No Balance Billing / Zero
+                Co-Payment Policy):
               </strong>{" "}
-              Entitles qualified Senior Citizen and PWD patients to a{" "}
-              <strong>12% Value-Added Tax (VAT) exemption FIRST</strong>,
-              followed by a mandatory <strong>20% discount</strong> on the
-              VAT-exempt balance across hospital (HCI) charges, diagnostic tests,
-              medicines, and physicians&apos; professional fees (PF), with{" "}
-              <strong>PhilHealth Case Rate benefits deducted LAST</strong>. Any
-              refusal to apply the sequential discount prior to discharge may be
-              reported to the local LGU{" "}
-              <strong>OSCA / PDAO</strong> or the{" "}
-              <strong>PhilHealth Callback Channel (0917-898-7442)</strong>.
+              Entitles qualified Indirect Contributors (Indigent, Sponsored,
+              Kasambahay, Senior Citizens under RA 10645, Solo Parents under PC
+              2026-0015, and PWDs under PC 2026-0017) and Lifetime Members
+              admitted in <strong>Basic / Ward accommodation</strong> to{" "}
+              <strong>Zero Co-Payment (₱0.00 out-of-pocket)</strong> for covered
+              hospital confinement services.
             </li>
           )}
           <li>

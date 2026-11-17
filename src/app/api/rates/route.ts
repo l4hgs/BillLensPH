@@ -46,6 +46,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileErr || profile?.role !== "admin") {
+      return NextResponse.json(
+        {
+          error:
+            "Forbidden: Only administrators (profiles.role = 'admin') can add or update PhilHealth catalog rates.",
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     let inputs: SeedPackageInput[] = [];
 

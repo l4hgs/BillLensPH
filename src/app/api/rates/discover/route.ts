@@ -37,10 +37,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const unverifiedSeeds = discoveredSeeds.map((item) => ({
+      ...item,
+      source_url: item.source_url ?? "ai_grounded:philhealth-acr",
+      is_verified: false,
+    }));
+
     let persistedToDb = false;
     try {
       const supabase = await createClient();
-      await upsertCatalogPackages(supabase, discoveredSeeds);
+      await upsertCatalogPackages(supabase, unverifiedSeeds);
       persistedToDb = true;
     } catch (dbErr) {
       console.warn(
@@ -49,7 +55,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const packages = discoveredSeeds.map((item) =>
+    const packages = unverifiedSeeds.map((item) =>
       toCatalogPackage(
         {
           case_code: item.case_code,
@@ -62,6 +68,7 @@ export async function POST(req: NextRequest) {
           effective_from: item.effective_from,
           effective_to: item.effective_to ?? null,
           source_url: item.source_url ?? "ai_grounded:philhealth-acr",
+          is_verified: false,
         },
         item.aliases
       )

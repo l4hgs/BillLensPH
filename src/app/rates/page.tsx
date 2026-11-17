@@ -36,6 +36,7 @@ export interface PhilHealthPackage {
   circularId: string;
   effectiveFrom: string;
   isAiDiscovered?: boolean;
+  isVerified: boolean;
   description: string;
   category:
     | "Surgical"
@@ -98,6 +99,9 @@ function mapCatalogToView(pkg: CatalogPackage): PhilHealthPackage {
   const hciFee = Number(pkg.hci_fee) || 0;
   const profFee = Number(pkg.prof_fee) || 0;
   const totalRate = Number(pkg.total_rate) || hciFee + profFee;
+  const isAiGrounded = Boolean(pkg.source_url?.startsWith("ai_grounded"));
+  const isVerified =
+    typeof pkg.is_verified === "boolean" ? pkg.is_verified : !isAiGrounded;
   return {
     code: pkg.code,
     keyword: pkg.keyword,
@@ -108,9 +112,12 @@ function mapCatalogToView(pkg: CatalogPackage): PhilHealthPackage {
     aliases: (pkg.aliases || []).map((a) => a.alias),
     circularId: pkg.circular_id || "2024-0037",
     effectiveFrom: pkg.effective_from || "2024-10-01",
-    isAiDiscovered: Boolean(pkg.source_url?.startsWith("ai_grounded")),
+    isAiDiscovered: !isVerified || isAiGrounded,
+    isVerified,
     category: inferCategory(pkg.keyword, pkg.code),
-    description: `Official PhilHealth Circular ${pkg.circular_id || "2024-0037"} package covering hospital facility charges (${formatPHP(hciFee)}) and accredited physician professional fees (${formatPHP(profFee)}).`,
+    description: isVerified
+      ? `Official PhilHealth Circular ${pkg.circular_id || "2024-0037"} package covering hospital facility charges (${formatPHP(hciFee)}) and accredited physician professional fees (${formatPHP(profFee)}).`
+      : `AI-estimated PhilHealth Case Rate (${pkg.circular_id || "2024-0037"}) covering hospital facility charges (${formatPHP(hciFee)}) and physician professional fees (${formatPHP(profFee)}). Verify against official PhilHealth circulars.`,
   };
 }
 
@@ -119,7 +126,7 @@ export default function RatesPage() {
   const [packages, setPackages] = useState<PhilHealthPackage[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -171,7 +178,18 @@ export default function RatesPage() {
           data: { user },
         } = await supabase.auth.getUser();
         if (cancelled) return;
-        setIsAuthenticated(Boolean(user));
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (!cancelled) {
+            setIsAdmin(profile?.role === "admin");
+          }
+        } else {
+          setIsAdmin(false);
+        }
 
         const result = await loadPackageCatalog(supabase);
         if (cancelled) return;
@@ -439,7 +457,7 @@ export default function RatesPage() {
             </p>
           </div>
 
-          {isAuthenticated && (
+          {isAdmin && (
             <Button
               type="button"
               size="sm"
@@ -847,10 +865,10 @@ export default function RatesPage() {
                           <FileText className="w-2.5 h-2.5" />
                           Circ. {pkg.circularId} ({pkg.effectiveFrom})
                         </span>
-                        {pkg.isAiDiscovered && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                            <Sparkles className="w-2.5 h-2.5" />
-                            AI Auto-Discovered
+                        {(!pkg.isVerified || pkg.isAiDiscovered) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300">
+                            <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                            AI-Estimated (Unverified)
                           </span>
                         )}
                       </div>
