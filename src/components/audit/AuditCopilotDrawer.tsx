@@ -6,12 +6,15 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   AlertCircle,
+  AlertTriangle,
   Bot,
+  Building2,
+  FileText,
   Loader2,
-  MessageSquareText,
   RotateCcw,
   Send,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Square,
   Trash2,
@@ -177,6 +180,7 @@ export function AuditCopilotDrawer({
 }: AuditCopilotDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -212,7 +216,39 @@ export function AuditCopilotDrawer({
   );
 
   const potentialSavings =
-    auditResult.disputed_overcharge_total + auditResult.senior_pwd_savings;
+    auditResult.disputed_overcharge_total +
+    auditResult.senior_pwd_savings +
+    (auditResult.case_rate_shortfall ?? 0) +
+    (auditResult.nbb_savings ?? 0) +
+    Math.max(0, auditResult.arithmetic_discrepancy ?? 0);
+
+  const commonQuestions = useMemo(
+    () => [
+      {
+        title: "Which line items are flagged for overcharging?",
+        desc: `Check ${yellowCount} flagged item${yellowCount === 1 ? "" : "s"} against DOH caps & ACR bundled supplies.`,
+        prompt: `Which specific line items on my statement from ${auditResult.hospital_name} are flagged for overcharging or unbundling?`,
+        icon: <AlertTriangle className="h-4 w-4 text-amber-600" />,
+      },
+      {
+        title: "Did the hospital apply PhilHealth & discounts properly?",
+        desc: "Verify statutory order: 12% VAT exemption, 20% Senior/PWD discount, then Case Rates.",
+        prompt: `Did ${auditResult.hospital_name} deduct my PhilHealth case rate and Senior/PWD discounts in the proper legal sequence?`,
+        icon: <ShieldCheck className="h-4 w-4 text-emerald-600" />,
+      },
+      {
+        title: "What requirements do I need for Malasakit Center?",
+        desc: `Step-by-step documents to offset remaining ${formatPHP(auditResult.actual_out_of_pocket)} balance.`,
+        prompt: `What specific requirements and documents do I need to bring to the Malasakit Center for this statement from ${auditResult.hospital_name}?`,
+        icon: <FileText className="h-4 w-4 text-blue-600" />,
+      },
+    ],
+    [
+      yellowCount,
+      auditResult.hospital_name,
+      auditResult.actual_out_of_pocket,
+    ]
+  );
 
   // Auto-scroll to bottom when messages stream in
   useEffect(() => {
@@ -222,6 +258,51 @@ export function AuditCopilotDrawer({
       el.scrollTop = el.scrollHeight;
     }
   }, [messages, status, isOpen]);
+
+  // Restore messages from localStorage on mount
+  useEffect(() => {
+    if (typeof window === "undefined" || !auditId) return;
+    try {
+      const raw = localStorage.getItem(`billlens_drawer_chat_${auditId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      }
+    } catch {
+      // Fallback
+    }
+  }, [auditId, setMessages]);
+
+  // Persist messages to localStorage
+  useEffect(() => {
+    if (typeof window === "undefined" || !auditId) return;
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem(
+          `billlens_drawer_chat_${auditId}`,
+          JSON.stringify(messages)
+        );
+      }
+    } catch {
+      // Fallback
+    }
+  }, [messages, auditId]);
+
+  // Warn before closing tab while streaming in drawer
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isStreaming) {
+        e.preventDefault();
+        e.returnValue =
+          "Billy is currently responding to your query. Closing will terminate the response.";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isStreaming]);
 
   // Lock body scroll and focus input when drawer opens
   useEffect(() => {
@@ -297,7 +378,7 @@ export function AuditCopilotDrawer({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="fixed inset-0 z-[110] flex items-end justify-end bg-[#1E293B]/60 backdrop-blur-[2px] transition-opacity duration-150 sm:items-stretch"
+            className="fixed inset-0 z-[110] flex items-end justify-end bg-slate-900/40 backdrop-blur-xs transition-opacity duration-150 sm:items-stretch"
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) setIsOpen(false);
             }}
@@ -306,139 +387,107 @@ export function AuditCopilotDrawer({
               role="dialog"
               aria-modal="true"
               aria-labelledby="chatbot-drawer-title"
-              className="flex h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl border-t border-[#CBD5E1] bg-[#F3F4F6] shadow-2xl sm:h-full sm:max-w-md sm:rounded-l-3xl sm:rounded-tr-none sm:border-l sm:border-t-0"
+              className="relative flex h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl border-t border-slate-200/80 bg-white shadow-2xl sm:h-full sm:max-w-lg sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0"
             >
-              {/* Drawer Header */}
-              <div className="border-b border-[#CBD5E1] bg-[#1E293B] px-5 py-4 text-white">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#2563EB] text-white">
-                      <Bot className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2
-                          id="chatbot-drawer-title"
-                          className="text-sm font-extrabold tracking-tight text-white"
-                        >
-                          BillLens AI Chatbot
-                        </h2>
-                        <span className="rounded-full bg-[#2563EB] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                          PH Navigator
-                        </span>
-                      </div>
-                      <p className="mt-0.5 line-clamp-1 text-[11px] text-[#CBD5E1]">
-                        {auditResult.hospital_name} ·{" "}
-                        {formatPHP(auditResult.gross_total)}
-                      </p>
-                    </div>
+              {/* Clean Light Header matching AI Chatbot Page */}
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white px-4 py-3 sm:px-5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-200/80 bg-blue-50 text-blue-600 shadow-2xs">
+                    <Bot className="h-4 w-4" />
                   </div>
-
-                  <div className="flex items-center gap-1">
-                    {messages.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          stop();
-                          setMessages([]);
-                          clearError();
-                        }}
-                        title="Clear conversation"
-                        aria-label="Clear conversation"
-                        className="cursor-pointer rounded-full p-2 text-[#CBD5E1] transition-colors hover:bg-white/10 hover:text-white"
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2
+                        id="chatbot-drawer-title"
+                        className="text-sm font-bold tracking-tight text-slate-900 truncate"
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setIsOpen(false)}
-                      aria-label="Close Chatbot drawer"
-                      className="cursor-pointer rounded-full p-2 text-[#CBD5E1] transition-colors hover:bg-white/10 hover:text-white"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Context Pills */}
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  {auditResult.detected_case_packages.length > 0 ? (
-                    auditResult.detected_case_packages.map((pkg) => (
-                      <span
-                        key={pkg.code}
-                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-white"
-                      >
-                        PhilHealth {pkg.code}: {formatPHP(pkg.total_rate)}
+                        AI Chatbot
+                      </h2>
+                      <span className="rounded-full bg-blue-50 border border-blue-200/80 px-2 py-0.5 text-[10px] font-bold text-blue-700 shrink-0">
+                        Billy
                       </span>
-                    ))
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-[#CBD5E1]">
-                      General Statutory Audit
-                    </span>
-                  )}
-                  {potentialSavings > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold text-amber-300">
-                      {formatPHP(potentialSavings)} potential savings
-                    </span>
-                  )}
+                    </div>
+                    <p className="line-clamp-1 text-[11px] text-slate-500">
+                      {auditResult.hospital_name} ·{" "}
+                      {formatPHP(auditResult.gross_total)}
+                    </p>
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  aria-label="Close Chatbot drawer"
+                  className="cursor-pointer rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
 
               {/* Scrollable Chat Messages Area */}
               <div
                 ref={scrollContainerRef}
-                className="flex-1 space-y-3.5 overflow-y-auto p-4"
+                className={cn(
+                  "flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 scroll-smooth",
+                  messages.length === 0
+                    ? "flex flex-col items-center justify-center"
+                    : "space-y-3.5"
+                )}
               >
-                {/* Welcome Card + Starter Chips */}
-                <div className="rounded-2xl border border-[#CBD5E1] bg-white p-4 shadow-xs">
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#2563EB]/10 text-[#2563EB]">
-                      <MessageSquareText className="h-4 w-4" />
+                {/* Empty State matching AI Chatbot Page */}
+                {messages.length === 0 && (
+                  <div className="w-full mx-auto flex flex-col items-center text-center space-y-4 py-2 transition-opacity duration-150">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-600 shadow-soft">
+                      <Bot className="w-6 h-6" />
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-[#1E293B]">
-                        Kumusta! I’m Billy, your go-to assistant. Feel free to
-                        ask about flagged hospital charges, PhilHealth Case Rate
-                        rules, Senior/PWD discounts, and Malasakit Center
-                        requirements!
-                      </p>
-                      <p className="text-xs leading-relaxed text-[#64748B]">
-                        Ask me about your{" "}
-                        <strong className="font-semibold text-[#1E293B]">
-                          {yellowCount} yellow-flagged item
-                          {yellowCount === 1 ? "" : "s"}
-                        </strong>
-                        , PhilHealth Case Rate rules, Senior/PWD discounts, or how
-                        to apply for{" "}
-                        <strong className="font-semibold text-[#1E293B]">
-                          Malasakit Center, DSWD, and PCSO
-                        </strong>{" "}
-                        assistance.
-                      </p>
-                    </div>
-                  </div>
 
-                  {/* Starter Prompt Chips */}
-                  <div className="mt-3.5 space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
-                      Suggested Questions
-                    </p>
-                    <div className="flex flex-col gap-1.5">
-                      {STARTER_PROMPTS.map((prompt) => (
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold tracking-tight text-slate-900">
+                        Kumusta! I’m Billy, your hospital billing assistant.
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                        Statement from{" "}
+                        <strong className="font-semibold text-slate-700">
+                          {auditResult.hospital_name}
+                        </strong>{" "}
+                        ({formatPHP(auditResult.gross_total)}) is loaded. Pick a
+                        question below or ask anything about your bill.
+                      </p>
+                    </div>
+
+                    {/* Interactive Starter Cards matching AI Chatbot Page */}
+                    <div className="w-full grid grid-cols-1 gap-2.5 pt-1 text-left">
+                      {commonQuestions.map((q, idx) => (
                         <button
-                          key={prompt}
+                          key={idx}
                           type="button"
                           disabled={isStreaming}
-                          onClick={() => handleSendQuery(prompt)}
-                          className="cursor-pointer rounded-xl border border-[#CBD5E1] bg-[#F3F4F6] px-3 py-2 text-left text-xs font-semibold text-[#1E293B] transition-colors hover:border-[#2563EB] hover:bg-white hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => handleSendQuery(q.prompt)}
+                          className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white hover:bg-blue-50/40 p-3.5 text-left shadow-2xs transition-all hover:border-blue-400 hover:shadow-soft active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                         >
-                          {prompt}
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-slate-50 group-hover:bg-white border border-slate-200/80 flex items-center justify-center shrink-0 shadow-2xs transition-colors">
+                              {q.icon}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
+                                  {q.title}
+                                </span>
+                                <span className="text-xs text-slate-300 group-hover:text-blue-500 transition-colors shrink-0">
+                                  →
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                {q.desc}
+                              </p>
+                            </div>
+                          </div>
                         </button>
                       ))}
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Conversation Thread */}
                 {messages.map((msg) => {
@@ -474,7 +523,7 @@ export function AuditCopilotDrawer({
                           "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs shadow-xs",
                           isUser
                             ? "rounded-tr-sm bg-[#2563EB] text-white"
-                            : "rounded-tl-sm border border-[#CBD5E1] bg-white text-[#1E293B]"
+                            : "rounded-tl-sm border border-[#CBD5E1] bg-[#F3F4F6] text-[#1E293B]"
                         )}
                       >
                         {text ? (
@@ -482,7 +531,7 @@ export function AuditCopilotDrawer({
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-[#64748B]">
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-[#2563EB]" />
-                            Checking your audit statement...
+                            Checking Philippine billing &amp; subsidy rules...
                           </span>
                         )}
                       </div>
@@ -496,10 +545,10 @@ export function AuditCopilotDrawer({
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2563EB] text-white">
                       <Bot className="h-3.5 w-3.5" />
                     </div>
-                    <div className="rounded-2xl rounded-tl-sm border border-[#CBD5E1] bg-white px-3.5 py-2.5 text-xs text-[#64748B] shadow-xs">
+                    <div className="rounded-2xl rounded-tl-sm border border-[#CBD5E1] bg-[#F3F4F6] px-3.5 py-2.5 text-xs text-[#64748B]">
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-[#2563EB]" />
-                        Analyzing your statement &amp; PhilHealth rules...
+                        Preparing your financial navigation guide...
                       </span>
                     </div>
                   </div>
@@ -542,8 +591,42 @@ export function AuditCopilotDrawer({
                 )}
               </div>
 
-              {/* Input & Non-Medical Disclaimer Footer */}
-              <div className="border-t border-[#CBD5E1] bg-white p-3.5">
+              {/* Input & Context Controls Area (Pinned to bottom, matching AI Chatbot Page) */}
+              <div className="border-t border-slate-200/80 bg-white p-3 sm:p-3.5 shrink-0 space-y-2.5">
+                {/* Top Toolbar: Statement Context Pill, Savings Badge & Clear Chat */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                    <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 truncate max-w-[230px]">
+                      <Building2 className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                      <span className="text-[10px] uppercase font-bold text-slate-400">
+                        Context:
+                      </span>
+                      <span className="truncate">
+                        {auditResult.hospital_name}
+                      </span>
+                    </div>
+
+                    {potentialSavings > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800 shrink-0">
+                        {formatPHP(potentialSavings)} savings
+                      </span>
+                    )}
+                  </div>
+
+                  {messages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(true)}
+                      className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-rose-600 shrink-0 px-2.5 py-1 rounded-full hover:bg-rose-50 transition-colors ml-auto"
+                      title="Clear conversation"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>Clear chat</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Input Form */}
                 <form
                   onSubmit={handleFormSubmit}
                   className="flex items-center gap-2"
@@ -553,9 +636,9 @@ export function AuditCopilotDrawer({
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask about a charge, PhilHealth, or Malasakit..."
+                    placeholder="Ask Billy about hospital bills, PhilHealth case rates, or medical discounts..."
                     disabled={isStreaming}
-                    className="h-10 flex-1 rounded-full border border-[#CBD5E1] bg-[#F3F4F6] px-4 text-xs text-[#1E293B] placeholder:text-[#64748B] focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:opacity-60"
+                    className="h-10 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:opacity-60 transition-colors"
                   />
                   {isStreaming ? (
                     <Button
@@ -564,7 +647,7 @@ export function AuditCopilotDrawer({
                       size="sm"
                       onClick={() => stop()}
                       aria-label="Stop generating"
-                      className="h-10 shrink-0 rounded-full px-3.5"
+                      className="h-10 shrink-0 rounded-full px-4 text-xs"
                     >
                       <Square className="h-3.5 w-3.5 fill-current" />
                       <span>Stop</span>
@@ -576,22 +659,87 @@ export function AuditCopilotDrawer({
                       size="sm"
                       disabled={!input.trim()}
                       aria-label="Send question"
-                      className="h-10 shrink-0 rounded-full px-4"
+                      className="h-10 shrink-0 rounded-full px-5 text-xs font-bold"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      <span>Ask</span>
+                      <span>Send</span>
                     </Button>
                   )}
                 </form>
 
-                <p className="mt-2 flex items-center justify-center gap-1 text-center text-[10px] text-[#64748B]">
-                  <ShieldAlert className="h-3 w-3 shrink-0 text-[#64748B]" />
+                <p className="mt-1 flex items-center justify-center gap-1 text-center text-[10px] text-slate-400">
+                  <ShieldAlert className="h-3 w-3 shrink-0" />
                   <span>
-                    Financial &amp; billing audit guidance only — not formal
-                    medical advice.
+                    Disclaimer: Guidance is for hospital billing audit and
+                    financial assistance navigation only, not formal medical
+                    advice.
                   </span>
                 </p>
               </div>
+
+              {/* Clear Chat Confirmation Dialog */}
+              {showClearConfirm && (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="drawer-clear-chat-title"
+                  className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
+                >
+                  <div className="w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 shadow-xl space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0 shadow-2xs">
+                        <Trash2 className="w-4 h-4" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <h3
+                          id="drawer-clear-chat-title"
+                          className="text-xs font-bold text-slate-900"
+                        >
+                          Clear conversation?
+                        </h3>
+                        <p className="text-[11px] text-slate-500 leading-snug">
+                          Delete all messages from this session.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-1.5 pt-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setShowClearConfirm(false)}
+                        className="rounded-full h-7 px-3 text-[11px] font-semibold"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={() => {
+                          stop();
+                          setMessages([]);
+                          clearError();
+                          if (typeof window !== "undefined" && auditId) {
+                            try {
+                              localStorage.removeItem(
+                                `billlens_drawer_chat_${auditId}`
+                              );
+                            } catch {
+                              // Fallback
+                            }
+                          }
+                          setShowClearConfirm(false);
+                        }}
+                        className="rounded-full h-7 px-3 text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white border-transparent"
+                      >
+                        Clear Chat
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>,
           document.body

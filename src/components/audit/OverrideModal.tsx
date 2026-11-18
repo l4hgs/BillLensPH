@@ -147,12 +147,12 @@ export function OverrideModal({
   };
 
   const inputClass =
-    "w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all";
-  const labelClass = "block text-xs font-bold text-slate-800 mb-1.5";
+    "w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all";
+  const labelClass = "block text-[11px] font-bold text-slate-700 mb-1";
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-[2px] transition-opacity duration-150"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-[2px] p-3 sm:p-4 transition-opacity duration-150"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -163,34 +163,33 @@ export function OverrideModal({
         aria-modal="true"
         aria-labelledby="override-title"
         onKeyDown={handleKeyDown}
-        className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl"
+        className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white shadow-xl"
       >
         <form onSubmit={handleSubmit} noValidate>
-          <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-100 bg-white px-5 py-4">
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-2.5 border-b border-slate-100 bg-white px-4 py-3">
             <div className="min-w-0">
               <h2
                 id="override-title"
-                className="text-base font-bold text-slate-900"
+                className="text-sm font-bold text-slate-900"
               >
                 Edit line item
               </h2>
-              <p className="mt-0.5 text-xs text-slate-600">
-                Fix an OCR misread or change how this charge is classified. The
-                audit recalculates instantly.
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Fix an OCR misread or adjust classification.
               </p>
             </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="rounded-full p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+              className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
             >
-              <X className="h-4.5 w-4.5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="space-y-4 px-5 py-4">
-            <div className="rounded-2xl border border-slate-200/80 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-600">
+          <div className="space-y-3 px-4 py-3">
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
               <span className="font-semibold text-slate-800">AI read: </span>
               {original.description} ·{" "}
               {original.quantity} × {formatPHP(original.unit_price)} ={" "}
@@ -233,7 +232,7 @@ export function OverrideModal({
               </select>
             </div>
 
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-3 gap-2">
               <div>
                 <label htmlFor="ov-qty" className={labelClass}>
                   Qty
@@ -283,10 +282,10 @@ export function OverrideModal({
 
             <fieldset>
               <legend className={labelClass}>Classification</legend>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <label
                   className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold transition-all",
+                    "flex cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition-all",
                     status === "auto"
                       ? "border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/15"
                       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -309,7 +308,7 @@ export function OverrideModal({
                     <label
                       key={tier}
                       className={cn(
-                        "flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold transition-all",
+                        "flex cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition-all",
                         selected
                           ? meta.tileActive
                           : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -323,36 +322,32 @@ export function OverrideModal({
                         onChange={() => setStatus(tier)}
                         className="sr-only"
                       />
-                      <meta.Icon className="h-3.5 w-3.5 shrink-0" />
+                      <meta.Icon className="h-3 w-3 shrink-0" />
                       {meta.label}
                     </label>
                   );
                 })}
               </div>
-              <p className="mt-1.5 text-[11px] leading-snug text-slate-600">
-                &ldquo;Automatic&rdquo; lets the PhilHealth rule engine decide.
-                Choosing a tier overrides it for this item only.
-              </p>
             </fieldset>
 
             <div>
               <label htmlFor="ov-note" className={labelClass}>
-                Note <span className="font-normal text-slate-500">(optional)</span>
+                Note <span className="font-normal text-slate-400">(optional)</span>
               </label>
-              <textarea
+              <input
                 id="ov-note"
-                rows={2}
+                type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g. Confirmed with billing that this was a private-room upgrade"
-                className={cn(inputClass, "resize-none")}
+                placeholder="e.g. Confirmed with billing desk"
+                className={inputClass}
               />
             </div>
 
             {errors.length > 0 && (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800"
+                className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800"
               >
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600" />
                 <ul className="space-y-0.5">
@@ -364,37 +359,37 @@ export function OverrideModal({
             )}
           </div>
 
-          <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-slate-100 bg-white px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-slate-100 bg-white px-4 py-2.5">
             {hasOverride ? (
               <Button
                 type="button"
                 variant="ghost"
-                size="md"
+                size="sm"
                 onClick={() => onSave(null)}
-                className="text-slate-600"
+                className="h-7 px-2.5 text-[11px] text-slate-600"
               >
-                <RotateCcw className="h-4 w-4" />
-                <span>Reset to AI value</span>
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset to AI</span>
               </Button>
             ) : (
               <span />
             )}
-            <div className="flex gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 type="button"
                 variant="outline"
-                size="md"
+                size="sm"
                 onClick={onClose}
-                className="flex-1 sm:flex-none"
+                className="h-7 rounded-full px-3 text-[11px]"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 variant="primary"
-                size="md"
+                size="sm"
                 disabled={errors.length > 0}
-                className="flex-1 sm:flex-none font-bold"
+                className="h-7 rounded-full px-3.5 text-[11px] font-bold"
               >
                 Apply changes
               </Button>

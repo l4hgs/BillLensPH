@@ -9,9 +9,10 @@ import {
   ChevronRight,
   ShieldCheck,
   Camera,
-  ArrowRight,
-  Sparkles,
   FolderArchive,
+  Eye,
+  FileText,
+  X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatPHP } from "@/lib/utils";
@@ -27,6 +28,7 @@ interface AuditDoc {
   fileType: "PDF" | "DOCX" | "Scan";
   dateText: string;
   createdAt: string;
+  thumbnailUrl?: string;
   isLive?: boolean;
   /** Total flagged by the audit engine; undefined until the bill is analyzed. */
   flaggedAmount?: number;
@@ -36,73 +38,72 @@ interface AuditDoc {
   }[];
 }
 
-/** Demo figure shown until the signed-in user has analyzed a real bill. */
-const SAMPLE_PROTECTION_TOTAL = 48750;
+function AuditThumbnail({
+  thumbnailUrl,
+  facility,
+  fileType,
+  onPreview,
+}: {
+  thumbnailUrl?: string;
+  facility: string;
+  fileType: "PDF" | "DOCX" | "Scan";
+  onPreview?: () => void;
+}) {
+  const [hasError, setHasError] = useState(false);
 
-const sampleAuditDocuments: AuditDoc[] = [
-  {
-    id: "doc-1",
-    facility: "St. Luke's Medical Center - BGC",
-    total: 148500,
-    fileSize: "4.2 MB",
-    fileType: "PDF",
-    dateText: "Audited Today",
-    createdAt: new Date().toISOString(),
-    tags: [
-      { label: "• ₱32,400 Disputed", variant: "rose" },
-      { label: "ISA #2024-884", variant: "slate" },
-    ],
-  },
-  {
-    id: "doc-2",
-    facility: "The Medical City — Inpatient",
-    total: 84200,
-    fileSize: "2.8 MB",
-    fileType: "DOCX",
-    dateText: "Yesterday",
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    tags: [
-      { label: "✓ PhilHealth Deducted (-₱19k)", variant: "emerald" },
-      { label: "Senior 20% Applied", variant: "slate" },
-    ],
-  },
-  {
-    id: "doc-3",
-    facility: "Makati Medical Center",
-    total: 29800,
-    fileSize: "3.1 MB",
-    fileType: "PDF",
-    dateText: "3 days ago",
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    tags: [
-      { label: "✓ Verified Clean", variant: "emerald" },
-      { label: "No DOH cap excess", variant: "slate" },
-    ],
-  },
-  {
-    id: "doc-4",
-    facility: "Cardinal Santos Medical Center",
-    total: 65000,
-    fileSize: "5.4 MB",
-    fileType: "Scan",
-    dateText: "2 weeks ago",
-    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-    tags: [
-      { label: "Room & Board Breakdown", variant: "blue" },
-      { label: "3 days semi-private", variant: "slate" },
-    ],
-  },
-  {
-    id: "doc-5",
-    facility: "Philippine General Hospital",
-    total: 14350,
-    fileSize: "1.9 MB",
-    fileType: "PDF",
-    dateText: "Last month",
-    createdAt: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
-    tags: [{ label: "Malasakit Center Credit", variant: "teal" }],
-  },
-];
+  if (thumbnailUrl && !hasError && fileType !== "PDF") {
+    return (
+      <div className="relative w-12 h-14 sm:w-14 sm:h-16 rounded-xl overflow-hidden border border-slate-200/90 bg-slate-100 shrink-0 shadow-2xs group/thumb hover:border-blue-400 transition-all">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={thumbnailUrl}
+          alt={facility}
+          onError={() => setHasError(true)}
+          className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-200"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent pointer-events-none" />
+        <span className="absolute bottom-1 left-1 px-1 py-0.2 rounded text-[8px] font-bold bg-slate-900/80 text-white tracking-wider uppercase backdrop-blur-2xs">
+          {fileType}
+        </span>
+        {onPreview && (
+          <button
+            type="button"
+            title="Preview hospital bill photo"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onPreview();
+            }}
+            className="absolute inset-0 flex items-center justify-center bg-slate-900/30 opacity-0 group-hover/thumb:opacity-100 transition-opacity text-white cursor-pointer"
+          >
+            <div className="p-1 rounded-full bg-slate-900/80 hover:bg-blue-600 transition-colors shadow-2xs">
+              <Eye className="w-3.5 h-3.5" />
+            </div>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "w-12 h-14 sm:w-14 sm:h-16 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold border shadow-2xs",
+        fileType === "PDF" && "bg-rose-50 text-[#DC2626] border-rose-200",
+        fileType === "DOCX" && "bg-blue-50 text-blue-600 border-blue-200",
+        fileType === "Scan" && "bg-blue-50 text-blue-600 border-blue-200"
+      )}
+    >
+      {fileType === "Scan" ? (
+        <Camera className="w-5 h-5 text-blue-600 mb-0.5" />
+      ) : (
+        <FileText className="w-5 h-5 text-rose-600 mb-0.5" />
+      )}
+      <span className="text-[9px] uppercase tracking-wider">{fileType}</span>
+    </div>
+  );
+}
 
 export default function DocumentArchivePage() {
   const [activeTab, setActiveTab] = useState<
@@ -110,6 +111,12 @@ export default function DocumentArchivePage() {
   >("This week");
   const [searchQuery, setSearchQuery] = useState("");
   const [liveDocs, setLiveDocs] = useState<AuditDoc[]>([]);
+  const [previewModal, setPreviewModal] = useState<{
+    url: string;
+    facility: string;
+    total: number;
+    auditId: string;
+  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -136,6 +143,43 @@ export default function DocumentArchivePage() {
 
         if (!rows || !isMounted) return;
 
+        // Collect storage paths to batch create fresh signed URLs
+        const pathsToSign: string[] = [];
+        for (const row of rows) {
+          const raw = (row.raw_extracted_data ?? {}) as Record<string, unknown>;
+          const files = Array.isArray(raw.files)
+            ? (raw.files as Record<string, unknown>[])
+            : [];
+          const firstPath =
+            typeof files[0]?.path === "string"
+              ? files[0].path
+              : Array.isArray(raw.storage_paths) && typeof raw.storage_paths[0] === "string"
+                ? raw.storage_paths[0]
+                : null;
+          if (firstPath) {
+            pathsToSign.push(firstPath);
+          }
+        }
+
+        const signedUrlMap = new Map<string, string>();
+        if (pathsToSign.length > 0) {
+          try {
+            const { data: signedResults } = await supabase.storage
+              .from("bill-uploads")
+              .createSignedUrls(pathsToSign, 3600);
+
+            if (signedResults) {
+              for (const item of signedResults) {
+                if (item.path && item.signedUrl) {
+                  signedUrlMap.set(item.path, item.signedUrl);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn("Could not batch create signed URLs for thumbnails:", err);
+          }
+        }
+
         const mapped: AuditDoc[] = rows.map((row) => {
           const raw = (row.raw_extracted_data ?? {}) as Record<string, unknown>;
           const files = Array.isArray(raw.files)
@@ -154,6 +198,20 @@ export default function DocumentArchivePage() {
             typeof raw.page_count === "number"
               ? raw.page_count
               : Math.max(1, files.length);
+
+          const filePath =
+            typeof files[0]?.path === "string"
+              ? files[0].path
+              : Array.isArray(raw.storage_paths) && typeof raw.storage_paths[0] === "string"
+                ? raw.storage_paths[0]
+                : null;
+
+          let thumbnailUrl: string | undefined = undefined;
+          if (filePath && signedUrlMap.has(filePath)) {
+            thumbnailUrl = signedUrlMap.get(filePath);
+          } else if (typeof files[0]?.signed_url === "string" && files[0].signed_url.trim()) {
+            thumbnailUrl = files[0].signed_url;
+          }
 
           const audit = (row.audit_results ?? null) as Partial<AuditEngineResult> | null;
           const auditItems = Array.isArray(audit?.line_items) ? audit.line_items : [];
@@ -199,6 +257,7 @@ export default function DocumentArchivePage() {
               year: "numeric",
             }),
             createdAt: row.created_at,
+            thumbnailUrl,
             isLive: true,
             flaggedAmount: isAnalyzed ? flagged : undefined,
             tags,
@@ -217,9 +276,7 @@ export default function DocumentArchivePage() {
     };
   }, []);
 
-  const combinedDocs = [...liveDocs, ...sampleAuditDocuments];
-
-  const filteredDocs = combinedDocs.filter((doc) => {
+  const filteredDocs = liveDocs.filter((doc) => {
     // 1. Tab Time Filter
     const now = new Date();
     const docTime = doc.createdAt ? new Date(doc.createdAt).getTime() : 0;
@@ -256,10 +313,10 @@ export default function DocumentArchivePage() {
   });
 
   const analyzedDocs = liveDocs.filter((doc) => doc.flaggedAmount !== undefined);
-  const hasLiveTotal = analyzedDocs.length > 0;
-  const protectionTotal = hasLiveTotal
-    ? analyzedDocs.reduce((sum, doc) => sum + (doc.flaggedAmount ?? 0), 0)
-    : SAMPLE_PROTECTION_TOTAL;
+  const protectionTotal = analyzedDocs.reduce(
+    (sum, doc) => sum + (doc.flaggedAmount ?? 0),
+    0
+  );
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6">
@@ -289,7 +346,7 @@ export default function DocumentArchivePage() {
                   {formatPHP(protectionTotal)}
                 </span>
                 <span className="text-[10px] font-semibold text-slate-400">
-                  identified {!hasLiveTotal && "(sample)"}
+                  identified
                 </span>
               </div>
             </div>
@@ -346,121 +403,119 @@ export default function DocumentArchivePage() {
       {/* Document Items List */}
       <div className="space-y-3">
         {filteredDocs.length === 0 ? (
-          <div className="p-8 sm:p-12 text-center bg-white rounded-2xl border border-slate-200/80 shadow-soft space-y-2.5">
+          <div className="p-8 sm:p-12 text-center bg-white rounded-2xl border border-slate-200/80 shadow-soft space-y-3">
             <FolderArchive className="w-8 h-8 text-slate-400 mx-auto" />
             <p className="text-sm font-bold text-slate-800">
-              No statements found for &ldquo;{activeTab}&rdquo;
+              {liveDocs.length === 0
+                ? "No statements audited yet"
+                : `No statements found for "${activeTab}"`}
             </p>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              {searchQuery
+              {liveDocs.length === 0
+                ? "Upload or capture an itemized hospital bill (ISA) in Scan Hub to start auditing."
+                : searchQuery
                 ? `No hospital statements matched your search for "${searchQuery}".`
                 : `There are no statements recorded under the ${activeTab} filter.`}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("All Documents");
-                setSearchQuery("");
-              }}
-              className="inline-block mt-2 text-xs font-bold text-[#2563EB] hover:underline cursor-pointer"
-            >
-              View All Documents →
-            </button>
+            {liveDocs.length === 0 ? (
+              <div className="pt-1">
+                <Link
+                  href="/scanner"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-soft transition-colors"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  Scan First Statement
+                </Link>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("All Documents");
+                  setSearchQuery("");
+                }}
+                className="inline-block mt-2 text-xs font-bold text-[#2563EB] hover:underline cursor-pointer"
+              >
+                View All Documents →
+              </button>
+            )}
           </div>
         ) : (
-          filteredDocs.map((doc) => {
-          const card = (
-            <Card
-              className="hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group border-slate-200/80 rounded-2xl shadow-soft"
-            >
-              <CardContent className="p-4 flex items-center justify-between gap-3">
-                <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                  {/* File Format Badge */}
-                  <div
-                    className={cn(
-                      "w-11 h-11 rounded-2xl flex flex-col items-center justify-center shrink-0 font-bold text-[10px] border",
-                      doc.fileType === "PDF" &&
-                        "bg-rose-50 text-[#DC2626] border-rose-200",
-                      doc.fileType === "DOCX" &&
-                        "bg-blue-50 text-blue-600 border-blue-200",
-                      doc.fileType === "Scan" &&
-                        "bg-blue-50 text-blue-600 border-blue-200"
-                    )}
-                  >
-                    {doc.fileType === "Scan" ? (
-                      <Camera className="w-5 h-5 text-blue-600" />
-                    ) : (
-                      <span>{doc.fileType}</span>
-                    )}
-                  </div>
-
-                  {/* Details */}
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <h4 className="font-bold text-sm text-[#1E293B] truncate group-hover:text-[#2563EB] transition-colors">
-                          {doc.facility}
-                        </h4>
-                        {doc.isLive && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2563EB] text-white shrink-0">
-                            <Sparkles className="w-2.5 h-2.5" />
-                            <span>LIVE</span>
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-black text-sm text-[#1E293B] shrink-0">
-                        {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-[#64748B] font-medium">
-                      {doc.fileSize} • {doc.fileType} • {doc.dateText}
-                    </p>
-
-                    {/* Chips */}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      {doc.tags.map((tag, i) => (
-                        <span
-                          key={i}
-                          className={cn(
-                            "px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
-                            tag.variant === "rose" &&
-                              "bg-rose-50 text-[#DC2626] border-rose-200",
-                            tag.variant === "emerald" &&
-                              "bg-emerald-50 text-emerald-800 border-emerald-200",
-                            tag.variant === "slate" &&
-                              "bg-[#F3F4F6] text-[#64748B] border-[#CBD5E1]",
-                            tag.variant === "blue" &&
-                              "bg-blue-50 text-[#2563EB] border-blue-200",
-                            tag.variant === "teal" &&
-                              "bg-teal-50 text-teal-800 border-teal-200"
-                          )}
-                        >
-                          {tag.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <ChevronRight className="w-4 h-4 text-[#64748B] group-hover:text-[#2563EB] group-hover:translate-x-0.5 transition-all shrink-0" />
-              </CardContent>
-            </Card>
-          );
-
-          // Only real audits open in the Audit Studio; sample rows are demo data.
-          return doc.isLive ? (
+          filteredDocs.map((doc) => (
             <Link
               key={doc.id}
               href={`/audits/${doc.id}`}
               className="block focus:outline-none"
             >
-              {card}
+              <Card className="hover:border-blue-300 hover:shadow-card-hover transition-all bg-white cursor-pointer group border-slate-200/80 rounded-2xl shadow-soft">
+                <CardContent className="p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                    {/* Bill Picture Thumbnail or Format Fallback */}
+                    <AuditThumbnail
+                      thumbnailUrl={doc.thumbnailUrl}
+                      facility={doc.facility}
+                      fileType={doc.fileType}
+                      onPreview={
+                        doc.thumbnailUrl
+                          ? () =>
+                              setPreviewModal({
+                                url: doc.thumbnailUrl!,
+                                facility: doc.facility,
+                                total: doc.total,
+                                auditId: doc.id,
+                              })
+                          : undefined
+                      }
+                    />
+
+                    {/* Details */}
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h4 className="font-bold text-sm text-[#1E293B] truncate group-hover:text-[#2563EB] transition-colors">
+                            {doc.facility}
+                          </h4>
+                        </div>
+                        <span className="font-black text-sm text-[#1E293B] shrink-0">
+                          {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-[#64748B] font-medium">
+                        {doc.fileSize} • {doc.fileType} • {doc.dateText}
+                      </p>
+
+                      {/* Chips */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {doc.tags.map((tag, i) => (
+                          <span
+                            key={i}
+                            className={cn(
+                              "px-2.5 py-0.5 rounded-full text-[10px] font-bold border",
+                              tag.variant === "rose" &&
+                                "bg-rose-50 text-[#DC2626] border-rose-200",
+                              tag.variant === "emerald" &&
+                                "bg-emerald-50 text-emerald-800 border-emerald-200",
+                              tag.variant === "slate" &&
+                                "bg-[#F3F4F6] text-[#64748B] border-[#CBD5E1]",
+                              tag.variant === "blue" &&
+                                "bg-blue-50 text-[#2563EB] border-blue-200",
+                              tag.variant === "teal" &&
+                                "bg-teal-50 text-teal-800 border-teal-200"
+                            )}
+                          >
+                            {tag.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <ChevronRight className="w-4 h-4 text-[#64748B] group-hover:text-[#2563EB] group-hover:translate-x-0.5 transition-all shrink-0" />
+                </CardContent>
+              </Card>
             </Link>
-          ) : (
-            <React.Fragment key={doc.id}>{card}</React.Fragment>
-          );
-        })
+          ))
         )}
       </div>
 
@@ -469,6 +524,59 @@ export default function DocumentArchivePage() {
         <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
         <span>End-to-End Encrypted Healthcare Storage (DPA 2012 Compliant)</span>
       </div>
+
+      {/* Bill Picture Lightbox / Fullscreen Modal */}
+      {previewModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 transition-opacity duration-150"
+          onClick={() => setPreviewModal(null)}
+        >
+          <div
+            className="relative w-full max-w-lg max-h-[82vh] bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden flex flex-col transition-opacity duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between gap-2.5">
+              <div className="min-w-0">
+                <h3 className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+                  {previewModal.facility}
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Total Billed: <span className="font-bold text-slate-800">{formatPHP(previewModal.total)}</span>
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href={`/audits/${previewModal.auditId}`}
+                  className="px-3 py-1 rounded-full text-[11px] font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-2xs transition-colors"
+                >
+                  Open Studio →
+                </Link>
+                <button
+                  type="button"
+                  aria-label="Close bill preview"
+                  onClick={() => setPreviewModal(null)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Image Body */}
+            <div className="flex-1 overflow-auto p-3 flex items-center justify-center bg-slate-50 min-h-[240px]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewModal.url}
+                alt={previewModal.facility}
+                className="max-w-full max-h-[62vh] rounded-lg object-contain shadow-2xs border border-slate-200/80 bg-white"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

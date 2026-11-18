@@ -41,11 +41,13 @@ export function buildPlainTextNegotiationBrief(
   const reviewItems = audit.line_items.filter(
     (item) => item.status === "review_worthy"
   );
+  const arithmeticAdjustment = Math.max(0, audit.arithmetic_discrepancy ?? 0);
   const potentialSavings =
     audit.disputed_overcharge_total +
     audit.senior_pwd_savings +
     (audit.case_rate_shortfall ?? 0) +
-    (audit.nbb_savings ?? 0);
+    (audit.nbb_savings ?? 0) +
+    arithmeticAdjustment;
 
   const discountType = normalizeStatutoryDiscountType(
     meta.statutoryDiscountType ?? audit.statutory_discount_type,
@@ -129,6 +131,18 @@ export function buildPlainTextNegotiationBrief(
           `   • No Balance Billing (NBB) Relief:    ${formatPHP(audit.nbb_savings)}`,
         ]
       : []),
+    ...(audit.statutory_reconciliation &&
+    audit.statutory_reconciliation.already_credited > 0
+      ? [
+          `   • Total Statutory Discount Entitled:  ${formatPHP(audit.statutory_reconciliation.total_entitled)}`,
+          `   • Less Discount Already Credited:     -${formatPHP(audit.statutory_reconciliation.already_credited)}`,
+        ]
+      : []),
+    ...(arithmeticAdjustment > 0
+      ? [
+          `   • SOA Arithmetic / Rounding Adj.:     ${formatPHP(arithmeticAdjustment)}`,
+        ]
+      : []),
     `   • Total Identified Adjustments:       ${formatPHP(potentialSavings)}`,
     `   • Estimated Fair Balance Due:         ${formatPHP(audit.fair_out_of_pocket)}`,
     "",
@@ -179,11 +193,29 @@ export function NegotiationBriefDocument({
   const outOfPocketItems = audit.line_items.filter(
     (item) => item.status === "out_of_pocket"
   );
+  const arithmeticAdjustment = Math.max(0, audit.arithmetic_discrepancy ?? 0);
   const potentialSavings =
     audit.disputed_overcharge_total +
     audit.senior_pwd_savings +
     (audit.case_rate_shortfall ?? 0) +
-    (audit.nbb_savings ?? 0);
+    (audit.nbb_savings ?? 0) +
+    arithmeticAdjustment;
+
+  const statutoryRecon = audit.statutory_reconciliation;
+  const totalStatutoryEntitled =
+    statutoryRecon?.total_entitled ??
+    reviewItems.reduce(
+      (sum, item) =>
+        sum +
+        (item.expected_statutory_relief ??
+          (item.statutory_discount_eligible
+            ? item.suggested_deduction || 0
+            : 0)),
+      0
+    );
+  const alreadyCreditedStatutory =
+    statutoryRecon?.already_credited ??
+    (ocr?.senior_pwd_discount_total || 0);
 
   const discountType = normalizeStatutoryDiscountType(
     meta.statutoryDiscountType ?? audit.statutory_discount_type,
@@ -437,7 +469,7 @@ export function NegotiationBriefDocument({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-[#CBD5E1]">
+          <div className="overflow-x-auto print:overflow-visible rounded-xl border border-[#CBD5E1]">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-[#CBD5E1] bg-[#F3F4F6] text-[10px] font-extrabold uppercase tracking-wider text-[#64748B] print:bg-white">
@@ -452,57 +484,153 @@ export function NegotiationBriefDocument({
               </thead>
               <tbody className="divide-y divide-[#CBD5E1]">
                 {reviewItems.map((item, index) => (
-                  <tr key={item.id} className="print-avoid-break align-top">
+                  <tr
+                    key={item.id}
+                    className="print-avoid-break align-top"
+                    style={{
+                      breakInside: "avoid",
+                      pageBreakInside: "avoid",
+                    }}
+                  >
                     <td className="px-3 py-2.5 font-mono text-[11px] font-bold text-[#64748B]">
-                      {index + 1}
+                      <div className="print-avoid-break">{index + 1}</div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <p className="font-bold text-[#1E293B]">
-                        {item.description}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-[#64748B]">
-                        Qty: {item.quantity} × {formatPHP(item.unit_price)}
-                        {item.matched_package_code
-                          ? ` · Matched Package ${item.matched_package_code}`
-                          : ""}
-                      </p>
-                      {item.flag_reason && (
-                        <p className="mt-1 flex items-start gap-1 text-[11px] font-medium text-amber-900">
-                          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
-                          <span>{item.flag_reason}</span>
+                      <div className="print-avoid-break">
+                        <p className="font-bold text-[#1E293B]">
+                          {item.description}
                         </p>
-                      )}
+                        <p className="mt-0.5 text-[11px] text-[#64748B]">
+                          Qty: {item.quantity} × {formatPHP(item.unit_price)}
+                          {item.matched_package_code
+                            ? ` · Matched Package ${item.matched_package_code}`
+                            : ""}
+                        </p>
+                        {item.flag_reason && (
+                          <p className="mt-1 flex items-start gap-1 text-[11px] font-medium text-amber-900">
+                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
+                            <span>{item.flag_reason}</span>
+                          </p>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-[11px] font-medium text-[#64748B] whitespace-nowrap">
-                      {item.category}
+                      <div className="print-avoid-break">{item.category}</div>
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B] whitespace-nowrap">
-                      {formatPHP(item.total_amount)}
+                      <div className="print-avoid-break">
+                        {formatPHP(item.total_amount)}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold text-amber-900 whitespace-nowrap">
-                      {item.suggested_deduction && item.suggested_deduction > 0
-                        ? `-${formatPHP(item.suggested_deduction)}`
-                        : "Verify Coverage"}
+                      <div className="print-avoid-break">
+                        {item.suggested_deduction &&
+                        item.suggested_deduction > 0
+                          ? `-${formatPHP(item.suggested_deduction)}`
+                          : "Verify Coverage"}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-[#1E293B] bg-[#F3F4F6] font-bold text-[#1E293B] print:bg-white">
-                  <td colSpan={3} className="px-3 py-2.5 text-right text-xs">
-                    Total Requested Billing &amp; Statutory Adjustments:
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-xs whitespace-nowrap">
+            </table>
+
+            {/* Single Final Non-Repeating Reconciliation Summary Footer */}
+            <div
+              className="print-avoid-break border-t-2 border-[#1E293B] bg-[#F3F4F6]/80 px-4 py-3 text-xs text-[#1E293B] print:bg-white"
+              style={{ breakInside: "avoid", pageBreakInside: "avoid" }}
+            >
+              <div className="space-y-1.5">
+                {hasStatutoryPrivilege && totalStatutoryEntitled > 0 && (
+                  <>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="font-semibold text-[#475569]">
+                        Total Statutory Discount Entitled (
+                        {isPwd ? "RA 10754" : "RA 9994"} / NIRC Sec. 109(G)):
+                      </span>
+                      <span className="font-mono font-semibold text-[#1E293B] whitespace-nowrap">
+                        -{formatPHP(totalStatutoryEntitled)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="font-semibold text-[#475569]">
+                        Less: Senior/PWD Discount Already Credited on SOA:
+                      </span>
+                      <span className="font-mono font-semibold text-[#475569] whitespace-nowrap">
+                        {alreadyCreditedStatutory > 0
+                          ? `+${formatPHP(alreadyCreditedStatutory)}`
+                          : formatPHP(0)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="font-bold text-[#1E293B]">
+                        Net Additional Statutory Adjustment Requested:
+                      </span>
+                      <span className="font-mono font-bold text-amber-900 whitespace-nowrap">
+                        -{formatPHP(audit.senior_pwd_savings)}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {audit.disputed_overcharge_total > 0 && (
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-[#475569]">
+                      Unbundled PhilHealth Case Rate Inclusions Flagged:
+                    </span>
+                    <span className="font-mono font-semibold text-amber-900 whitespace-nowrap">
+                      -{formatPHP(audit.disputed_overcharge_total)}
+                    </span>
+                  </div>
+                )}
+
+                {(audit.case_rate_shortfall ?? 0) > 0 && (
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-[#475569]">
+                      Under-Deducted PhilHealth Case Rate Shortfall:
+                    </span>
+                    <span className="font-mono font-semibold text-amber-900 whitespace-nowrap">
+                      -{formatPHP(audit.case_rate_shortfall ?? 0)}
+                    </span>
+                  </div>
+                )}
+
+                {(audit.arithmetic_discrepancy ?? 0) !== 0 && (
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-[#475569]">
+                      SOA Arithmetic / Rounding Adjustment:
+                    </span>
+                    <span className="font-mono font-semibold text-amber-900 whitespace-nowrap">
+                      -{formatPHP(Math.abs(audit.arithmetic_discrepancy ?? 0))}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-4 border-t border-[#CBD5E1] pt-1.5 font-bold text-[#1E293B]">
+                  <span>
+                    Total Requested Billing &amp; Statutory Adjustments (Billed:{" "}
                     {formatPHP(
                       reviewItems.reduce((sum, i) => sum + i.total_amount, 0)
                     )}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-xs text-amber-900 whitespace-nowrap">
+                    ):
+                  </span>
+                  <span className="font-mono text-amber-900 whitespace-nowrap">
                     -{formatPHP(potentialSavings)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 border-t border-[#CBD5E1] pt-1.5 font-black text-emerald-900">
+                  <span>
+                    Reconciled Balance Due (Before PhilHealth Case Rate):
+                  </span>
+                  <span className="font-mono text-sm whitespace-nowrap">
+                    {formatPHP(audit.fair_out_of_pocket)}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </section>

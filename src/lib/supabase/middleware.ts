@@ -19,6 +19,22 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Never run `getUser()` in middleware on `/auth/callback`: if an expired session
+  // cookie is present alongside a fresh PKCE `code_verifier` cookie, a failed
+  // `getUser()` triggers `_removeSession()` -> `removeAllPKCEVerifiers()`, which
+  // wipes the PKCE verifier before the callback route handler can exchange `code`!
+  if (request.nextUrl.pathname.startsWith("/auth/callback")) {
+    return supabaseResponse;
+  }
+
+  const allRequestCookies = request.cookies.getAll();
+  const hasAuthTokenCookie = allRequestCookies.some((c) =>
+    /^sb-[a-z0-9]+-auth-token(?:\.\d+)?$/.test(c.name)
+  );
+  if (!hasAuthTokenCookie) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     global: {
       fetch: clockSkewSafeFetch,

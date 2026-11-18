@@ -15,6 +15,7 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
+  Columns2,
   Loader2,
   Printer,
   RefreshCw,
@@ -28,6 +29,10 @@ import { Button } from "@/components/ui/button";
 import { AuditLineItemRow } from "@/components/audit/AuditLineItemRow";
 import { AuditChatbotDrawer } from "@/components/audit/AuditChatbotDrawer";
 import { OverrideModal } from "@/components/audit/OverrideModal";
+import {
+  SideBySideBillViewer,
+  type BillImagePage,
+} from "@/components/audit/SideBySideBillViewer";
 import {
   TIER_META,
   TrafficLightSummary,
@@ -101,6 +106,8 @@ export default function AuditStudioPage({
 
   const [activeTier, setActiveTier] = useState<AuditTier | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [billImages, setBillImages] = useState<BillImagePage[]>([]);
+  const [showSideBySide, setShowSideBySide] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -205,8 +212,58 @@ export default function AuditStudioPage({
 
       const catalog = await loadPackageCatalog(supabase);
 
+      // Extract storage paths for bill images / PDFs
+      const files = Array.isArray(raw.files)
+        ? (raw.files as Array<Record<string, unknown>>)
+        : [];
+      const storagePaths: string[] = [];
+      for (const f of files) {
+        if (typeof f?.path === "string" && f.path.trim()) {
+          storagePaths.push(f.path);
+        }
+      }
+      if (storagePaths.length === 0 && Array.isArray(raw.storage_paths)) {
+        for (const p of raw.storage_paths) {
+          if (typeof p === "string" && p.trim()) {
+            storagePaths.push(p);
+          }
+        }
+      }
+
+      let loadedImages: BillImagePage[] = [];
+      if (storagePaths.length > 0) {
+        try {
+          const { data: signedResults } = await supabase.storage
+            .from("bill-uploads")
+            .createSignedUrls(storagePaths, 3600);
+
+          if (signedResults) {
+            loadedImages = signedResults
+              .filter((res) => Boolean(res.signedUrl))
+              .map((res, idx) => ({
+                url: res.signedUrl!,
+                name: (files[idx]?.original_name as string) || `Page ${idx + 1}`,
+                mimeType: (files[idx]?.mime_type as string) || "image/jpeg",
+              }));
+          }
+        } catch (err) {
+          console.warn("Could not load signed URLs for side-by-side bill view:", err);
+        }
+      }
+
+      if (loadedImages.length === 0 && files.length > 0) {
+        loadedImages = files
+          .filter((f) => typeof f.signed_url === "string" && f.signed_url.trim())
+          .map((f, idx) => ({
+            url: f.signed_url as string,
+            name: (f.original_name as string) || `Page ${idx + 1}`,
+            mimeType: (f.mime_type as string) || "image/jpeg",
+          }));
+      }
+
       if (cancelled) return;
 
+      setBillImages(loadedImages);
       setRawData(raw);
       setOcr(loadedOcr);
       setOverrides(loadedOverrides);
@@ -602,11 +659,19 @@ export default function AuditStudioPage({
     result.disputed_overcharge_total +
     result.senior_pwd_savings +
     (result.case_rate_shortfall ?? 0) +
-    (result.nbb_savings ?? 0);
+    (result.nbb_savings ?? 0) +
+    Math.max(0, result.arithmetic_discrepancy ?? 0);
   const hasMatchedPackage = result.detected_case_packages.length > 0;
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6">
+    <div
+      className={cn(
+        "w-full mx-auto space-y-6 transition-all duration-200",
+        showSideBySide && billImages.length > 0
+          ? "max-w-7xl px-3 sm:px-6"
+          : "max-w-5xl px-4 sm:px-6"
+      )}
+    >
       {backLink}
 
       {/* Bill header */}
@@ -634,15 +699,43 @@ export default function AuditStudioPage({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+              {billImages.length > 0 && (
+                <Button
+                  type="button"
+                  variant={showSideBySide ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => setShowSideBySide((prev) => !prev)}
+                  className="font-bold flex items-center gap-1.5 cursor-pointer shadow-soft"
+                >
+                  <Columns2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">
+                    {showSideBySide ? "Hide Statement Photo" : "Side-by-Side Bill"}
+                  </span>
+                  <span className="sm:hidden">
+                    {showSideBySide ? "Hide Bill" : "View Bill"}
+                  </span>
+                  <span
+                    className={cn(
+                      "px-1.5 py-0.2 rounded-full text-[10px] font-bold ml-0.5",
+                      showSideBySide
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-200 text-slate-700"
+                    )}
+                  >
+                    {billImages.length}
+                  </span>
+                </Button>
+              )}
               <Link href={`/audits/${id}/brief`}>
                 <Button
                   type="button"
-                  variant="primary"
+                  variant="outline"
                   size="sm"
                   className="font-bold"
                 >
                   <Printer className="h-3.5 w-3.5" />
-                  <span>Export Brief</span>
+                  <span className="hidden sm:inline">Export Brief</span>
+                  <span className="sm:hidden">Brief</span>
                 </Button>
               </Link>
               {!getSampleBillById(id) && (
@@ -930,51 +1023,46 @@ export default function AuditStudioPage({
         </CardContent>
       </Card>
 
-      {/* Money summary */}
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-3.5">
-          <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">
-            Total billed
-          </span>
-          <span className="text-lg font-black text-slate-900">
-            {formatPHP(result.gross_total)}
-          </span>
-          <span className="block text-[11px] text-slate-600">
-            Hospital asks you to pay {formatPHP(result.actual_out_of_pocket)}
-          </span>
-        </div>
-        <div className="rounded-2xl border border-amber-200/80 bg-amber-50/50 p-3.5">
-          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
-            <AlertTriangle className="h-3 w-3" />
-            Potential savings
-          </span>
-          <span className="text-lg font-black text-amber-900">
-            {formatPHP(potentialSavings)}
-          </span>
-          <span className="block text-[11px] text-amber-800/80">
-            Unbundled charges and missed discounts
-          </span>
-        </div>
-        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-3.5">
-          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-            <ShieldCheck className="h-3 w-3" />
-            Fair balance due
-          </span>
-          <span className="text-lg font-black text-emerald-900">
-            {formatPHP(result.fair_out_of_pocket)}
-          </span>
-          <span className="block text-[11px] text-emerald-800/80">
-            If every flagged item is corrected
-          </span>
-        </div>
-      </div>
+      {/* Side-by-Side Split View Container */}
+      <div
+        className={cn(
+          "grid gap-6 items-start",
+          showSideBySide && billImages.length > 0
+            ? "grid-cols-1 lg:grid-cols-12"
+            : "grid-cols-1"
+        )}
+      >
+        {/* Left Column: Original Hospital Statement Document Viewer (Sticky on Desktop) */}
+        {showSideBySide && billImages.length > 0 && (
+          <div className="lg:col-span-5 xl:col-span-5 lg:sticky lg:top-20 z-10">
+            <SideBySideBillViewer
+              images={billImages}
+              hospitalName={result.hospital_name}
+              onClose={() => setShowSideBySide(false)}
+              className="h-[calc(100vh-6.5rem)]"
+            />
+          </div>
+        )}
 
-      {/* Traffic-light breakdown */}
-      <TrafficLightSummary
-        items={result.line_items}
-        activeTier={activeTier}
-        onSelectTier={setActiveTier}
-      />
+        {/* Right Column: Financial Summaries & Itemized Line Items */}
+        <div
+          className={cn(
+            "space-y-5 min-w-0",
+            showSideBySide && billImages.length > 0
+              ? "lg:col-span-7 xl:col-span-7"
+              : "w-full"
+          )}
+        >
+          {/* Unified Financial Summary & Traffic-Light Triage Dashboard */}
+          <TrafficLightSummary
+            items={result.line_items}
+            activeTier={activeTier}
+            onSelectTier={setActiveTier}
+            grossTotal={result.gross_total}
+            actualOutOfPocket={result.actual_out_of_pocket}
+            potentialSavings={potentialSavings}
+            fairOutOfPocket={result.fair_out_of_pocket}
+          />
 
       {/* Bill-level findings */}
       {billLevelFlags.length > 0 && (
@@ -1003,7 +1091,7 @@ export default function AuditStudioPage({
       )}
 
       {!hasMatchedPackage && (
-        <p className="rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-xs leading-relaxed text-slate-600">
+        <p className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-2xs">
           No PhilHealth case package was matched to this bill, so unbundling
           checks were skipped. Only statutory Senior/PWD checks and your own
           overrides apply.
@@ -1035,7 +1123,7 @@ export default function AuditStudioPage({
         </div>
 
         {visibleItems.length === 0 ? (
-          <div className="rounded-3xl border border-slate-100 bg-white p-8 text-center text-xs text-slate-600">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-8 text-center text-xs text-slate-600 shadow-2xs">
             {result.line_items.length === 0
               ? "No line items were detected on this statement. Try re-analyzing with a clearer photo."
               : `No items are classified as ${activeTier ? TIER_META[activeTier].label : "this tier"}.`}
@@ -1054,41 +1142,55 @@ export default function AuditStudioPage({
           </ul>
         )}
       </section>
+        </div>
+      </div>
 
-      {/* Save bar */}
+      {/* Compact Floating Save / Confirmation Status Pill */}
       {(isDirty || savedNotice || actionError) && (
-        <div className="sticky bottom-24 z-30 md:bottom-6">
+        <div className="sticky bottom-20 z-30 flex justify-center px-4 md:bottom-5 pointer-events-none">
           <div
-            className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur-md sm:flex-row sm:items-center sm:justify-between"
+            className="pointer-events-auto inline-flex flex-wrap items-center justify-between gap-3 rounded-full border border-slate-200/90 bg-white/95 px-4 py-2 shadow-lg backdrop-blur-md max-w-md"
             role="status"
           >
-            <p
-              className={cn(
-                "px-1 text-xs font-semibold",
-                actionError
-                  ? "text-rose-700"
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "h-2 w-2 shrink-0 rounded-full",
+                  actionError
+                    ? "bg-rose-500"
+                    : isDirty
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                )}
+              />
+              <p
+                className={cn(
+                  "text-xs font-semibold whitespace-nowrap",
+                  actionError
+                    ? "text-rose-700"
+                    : isDirty
+                      ? "text-slate-800"
+                      : "text-emerald-700"
+                )}
+              >
+                {actionError
+                  ? actionError
                   : isDirty
-                    ? "text-slate-800"
-                    : "text-emerald-700"
-              )}
-            >
-              {actionError
-                ? actionError
-                : isDirty
-                  ? "You have unsaved changes"
-                  : "Changes saved"}
-            </p>
+                    ? "You have unsaved changes"
+                    : "Changes saved"}
+              </p>
+            </div>
             {isDirty && (
-              <div className="flex gap-2">
+              <div className="flex items-center gap-1.5">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleDiscard}
                   disabled={isSaving}
-                  className="flex-1 sm:flex-none"
+                  className="h-7 rounded-full px-3 text-[11px] font-semibold"
                 >
-                  <Undo2 className="h-3.5 w-3.5" />
+                  <Undo2 className="h-3 w-3" />
                   Discard
                 </Button>
                 <Button
@@ -1097,12 +1199,12 @@ export default function AuditStudioPage({
                   size="sm"
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="flex-1 font-bold sm:flex-none"
+                  className="h-7 rounded-full px-3.5 text-[11px] font-bold"
                 >
                   {isSaving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    <Save className="h-3.5 w-3.5" />
+                    <Save className="h-3 w-3" />
                   )}
                   Save changes
                 </Button>

@@ -3,6 +3,10 @@ import type {
   ExtractedLineItem,
   StatutoryDiscountType,
 } from "@/types/audit";
+import {
+  detectSoaCreditRow,
+  resolveBillingCategory,
+} from "./billingClassification";
 
 /**
  * Shared fallback order of fast Gemini Flash models used across Vision OCR,
@@ -74,9 +78,27 @@ PHILIPPINE BILLING CONVENTIONS TO DETECT:
    - Miscellaneous / Administrative fees
 4. Line-Level VAT Exemption (\`is_vat_exempt\`):
    - Set \`"is_vat_exempt": true\` when a line item has a \`VX\`, \`VAT-Exempt\`, \`Non-VAT\`, \`NV\`, or \`0% VAT\` marker, when its VAT column is 0.00, or when it is a statutory VAT-exempt medicine/supply under TRAIN/CREATE Law (RA 10963 / RA 11534, such as maintenance medicines for hypertension, diabetes, high cholesterol, kidney disease/dialysis, cancer, or tuberculosis). Otherwise set \`"is_vat_exempt": false\`.
-5. Deductions and Subsidies:
+   - Do NOT mark hospital/diagnostic/physician services as VAT-exempt yourself; the audit engine applies NIRC Sec. 109(G) service exemption by category.
+5. STRICT CATEGORY MAPPING (hospital cost centers are NEVER "Miscellaneous"):
+   - "Emergency Room", "ER", "ER Fee", "Emergency Dept", "Ward", "Room", "ICU", "Accommodation", "Room and Board" -> "Room & Board" (the hospital facility/ROOM_AND_ER bucket)
+   - "Operating Room", "OR Fee", "Delivery Room", "DR Fee", "Recovery Room", "PACU", "Labor Room" -> "Operating Room"
+   - "Pharmacy", "Pharmacy - Main", "Drugs", "Medicines", IV fluids -> "Drugs/Medicines"
+   - "Central Supply Room", "CSR", "Medical Supplies", kits, packs, trays -> "Medical Supplies"
+   - "X-Ray", "Radiology", "CT Scan", "MRI", "Ultrasound", "Laboratory", "Dept of Clinical Laboratories", "Pulmonary Section", "Respiratory", "ECG", "2D Echo", "Blood Bank" -> "Laboratory/Diagnostics"
+   - "Professional Fee", doctor/surgeon/anesthesiologist fees -> "Professional Fees"
+   - Use "Miscellaneous" ONLY for genuinely non-medical items (admission kit, telephone, TV, parking, certificates, administrative fees).
+6. CREDITS ARE NOT LINE ITEMS (PAYMENT/CN column):
+   - Rows such as "Senior Citizen Discount", "SC Discount", "PWD Discount", "PhilHealth", "Payment", "Partial Payment", "Deposit", "HMO", or "Guarantor" are credits. NEVER put them in \`line_items\`.
+   - Put the Senior/PWD discount credit already granted on the SOA into \`senior_pwd_discount_total\` (e.g. "Senior Citizen Discount 1,240.00" -> 1240).
+   - Put cash/deposit/HMO/guarantor payments into \`cash_or_hmo_payments_total\` (e.g. "Payment 4,960.00" -> 4960).
+   - Put PhilHealth deductions into \`philhealth_total\`.
+   - \`gross_total\` is the CHARGES column total only (never the PAYMENT/CN total). \`net_balance_due\` is the printed BALANCE DUE exactly as shown (do not recompute it).
+7. PROFESSIONAL FEES TABLE (multi-doctor PF breakdown):
+   - If a separate "Professional Fees Particular" table lists doctors, read each row's \`SR/PWD DISC\` value into \`discount_applied\` and its PHILHEALTH value into \`philhealth_deducted\` for the matching Professional Fee line.
+   - Do NOT add PF table rows as extra line items when the hospital particulars already contain a "Professional Fee" summary line with the same total (avoid double-counting). Skip doctors whose charges are 0.00.
+8. Deductions and Subsidies:
    - PhilHealth benefit deduction (HCI fee portion, PF portion)
-   - Senior Citizen (RA 9994) / PWD (RA 10754) 20% discount and 12% VAT exemption if noted (set \`statutory_discount_type\` to \`"senior"\`, \`"pwd"\`, or \`"regular"\`)
+   - Senior Citizen (RA 9994) / PWD (RA 10754) status (set \`statutory_discount_type\` to \`"senior"\`, \`"pwd"\`, or \`"regular"\`). An age of 60+ or a "Senior Citizen Discount" credit means \`"senior"\`.
    - HMO / Health insurance coverage (Maxicare, Intellicare, Medicard, PhilCare, etc.)
    - Net balance due / out-of-pocket remaining
 
@@ -109,6 +131,7 @@ Respond with ONLY valid JSON (no markdown formatting, no code fences, just the r
   "gross_total": number,
   "philhealth_total": number,
   "senior_pwd_discount_total": number,
+  "cash_or_hmo_payments_total": number,
   "net_balance_due": number
 }
 `;
@@ -318,6 +341,10 @@ export function mergeExtractedBills(
       mergedItems.push({
         ...item,
         id: itemId,
+        category: resolveBillingCategory(
+          item.description,
+          sanitizeCategory(item.category)
+        ),
         is_vat_exempt:
           Boolean(item.is_vat_exempt) ||
           detectVatExemptFromDescription(item.description),
@@ -370,9 +397,17 @@ export function mergeExtractedBills(
         pages.reduce((sum, p) => sum + p.senior_pwd_discount_total, 0)
       );
 
+  const cashPaymentsTotal = lastPageHasGrandTotal
+    ? (lastPage.cash_or_hmo_payments_total ?? 0) ||
+      Math.max(...pages.map((p) => p.cash_or_hmo_payments_total ?? 0))
+    : pages.reduce((sum, p) => sum + (p.cash_or_hmo_payments_total ?? 0), 0);
+
   const netBalanceDue = lastPageHasGrandTotal
     ? lastPage.net_balance_due
-    : Math.max(0, grossTotal - philhealthTotal - seniorDiscountTotal);
+    : Math.max(
+        0,
+        grossTotal - philhealthTotal - seniorDiscountTotal - cashPaymentsTotal
+      );
 
   return {
     hospital_name: hospitalName,
@@ -389,6 +424,9 @@ export function mergeExtractedBills(
     gross_total: grossTotal,
     philhealth_total: philhealthTotal,
     senior_pwd_discount_total: seniorDiscountTotal,
+    ...(cashPaymentsTotal > 0
+      ? { cash_or_hmo_payments_total: cashPaymentsTotal }
+      : {}),
     net_balance_due: netBalanceDue,
   };
 }
@@ -396,54 +434,123 @@ export function mergeExtractedBills(
 export function sanitizeExtractedBill(
   data: Partial<ExtractedBillData>
 ): ExtractedBillData {
-  const lineItems: ExtractedLineItem[] = Array.isArray(data.line_items)
-    ? data.line_items.map((item, index) => {
-        const description = String(
-          item.description || "Unspecified Medical Charge"
-        ).trim();
-        return {
-          // Ids are index-based (never model-supplied) so they are always unique;
-          // Audit Studio overrides are keyed by this id.
-          id: `item-${index + 1}`,
+  const rawRec = data as Record<string, unknown>;
+  let creditRowStatutoryTotal = 0;
+  let creditRowPhilhealthTotal = 0;
+  let creditRowPaymentTotal = 0;
+
+  const rawItems = Array.isArray(data.line_items) ? data.line_items : [];
+  const chargeableRawItems: ExtractedLineItem[] = [];
+
+  for (const rawItem of rawItems) {
+    const description = String(
+      rawItem?.description || "Unspecified Medical Charge"
+    ).trim();
+    const rawAmount = Math.abs(
+      Number(rawItem?.total_amount) || Number(rawItem?.unit_price) || 0
+    );
+    const creditKind = detectSoaCreditRow(description);
+    if (creditKind === "statutory_discount") {
+      creditRowStatutoryTotal += rawAmount;
+      continue;
+    }
+    if (creditKind === "philhealth") {
+      creditRowPhilhealthTotal += rawAmount;
+      continue;
+    }
+    if (creditKind === "payment") {
+      creditRowPaymentTotal += rawAmount;
+      continue;
+    }
+    chargeableRawItems.push(rawItem);
+  }
+
+  const lineItems: ExtractedLineItem[] = chargeableRawItems.map(
+    (item, index) => {
+      const description = String(
+        item.description || "Unspecified Medical Charge"
+      ).trim();
+      const rawItemRec = item as unknown as Record<string, unknown>;
+      const explicitLineDiscount =
+        Number(item.discount_applied) ||
+        Number(rawItemRec.explicitLineDiscount) ||
+        Number(rawItemRec.explicit_line_discount) ||
+        0;
+      const totalAmount = Number(item.total_amount) || 0;
+      const philhealthDeducted = Number(item.philhealth_deducted) || 0;
+      return {
+        // Ids are index-based (never model-supplied) so they are always unique;
+        // Audit Studio overrides are keyed by this id.
+        id: `item-${index + 1}`,
+        description,
+        category: resolveBillingCategory(
           description,
-          category: sanitizeCategory(item.category),
-          quantity: Math.max(1, Number(item.quantity) || 1),
-          unit_price: Number(item.unit_price) || Number(item.total_amount) || 0,
-          total_amount: Number(item.total_amount) || 0,
-          philhealth_deducted: Number(item.philhealth_deducted) || 0,
-          discount_applied: Number(item.discount_applied) || 0,
-          balance:
-            item.balance !== null &&
-            item.balance !== undefined &&
-            Number.isFinite(Number(item.balance))
-              ? Number(item.balance)
-              : Math.max(
-                  0,
-                  (Number(item.total_amount) || 0) -
-                    (Number(item.philhealth_deducted) || 0) -
-                    (Number(item.discount_applied) || 0)
-                ),
-          is_vat_exempt:
-            Boolean(item.is_vat_exempt) ||
-            detectVatExemptFromDescription(description),
-        };
-      })
-    : [];
+          sanitizeCategory(item.category)
+        ),
+        quantity: Math.max(1, Number(item.quantity) || 1),
+        unit_price: Number(item.unit_price) || totalAmount || 0,
+        total_amount: totalAmount,
+        philhealth_deducted: philhealthDeducted,
+        discount_applied: explicitLineDiscount,
+        balance:
+          item.balance !== null &&
+          item.balance !== undefined &&
+          Number.isFinite(Number(item.balance))
+            ? Number(item.balance)
+            : Math.max(
+                0,
+                totalAmount - philhealthDeducted - explicitLineDiscount
+              ),
+        is_vat_exempt:
+          Boolean(item.is_vat_exempt) ||
+          detectVatExemptFromDescription(description),
+      };
+    }
+  );
 
   const computedGross = lineItems.reduce(
     (acc, curr) => acc + curr.total_amount,
     0
   );
 
-  const rawDiscountType = String(data.statutory_discount_type || "").toLowerCase();
+  const explicitStatutoryCredit =
+    Number(data.senior_pwd_discount_total) ||
+    Number(rawRec.existingStatutoryDiscountCredit) ||
+    0;
+  const resolvedStatutoryCredit =
+    explicitStatutoryCredit > 0
+      ? explicitStatutoryCredit
+      : creditRowStatutoryTotal;
+
+  const explicitPhilhealthTotal =
+    Number(data.philhealth_total) ||
+    Number(rawRec.philhealthDeductionTotal) ||
+    0;
+  const resolvedPhilhealthTotal =
+    explicitPhilhealthTotal > 0
+      ? explicitPhilhealthTotal
+      : creditRowPhilhealthTotal;
+
+  const explicitPaymentsTotal =
+    Number(data.cash_or_hmo_payments_total) ||
+    Number(rawRec.existingCashOrHmoPayments) ||
+    0;
+  const resolvedPaymentsTotal =
+    explicitPaymentsTotal > 0 ? explicitPaymentsTotal : creditRowPaymentTotal;
+
+  const rawDiscountType = String(
+    data.statutory_discount_type || ""
+  ).toLowerCase();
   const statutoryDiscountType: StatutoryDiscountType =
     rawDiscountType === "pwd"
       ? "pwd"
       : rawDiscountType === "senior"
         ? "senior"
-        : data.is_senior_or_pwd
+        : data.is_senior_or_pwd || resolvedStatutoryCredit > 0
           ? "senior"
           : "regular";
+
+  const grossTotal = Number(data.gross_total) || computedGross;
 
   return {
     hospital_name: String(
@@ -473,23 +580,25 @@ export function sanitizeExtractedBill(
     is_senior_or_pwd: statutoryDiscountType !== "regular",
     statutory_discount_type: statutoryDiscountType,
     line_items: lineItems,
-    gross_total: Number(data.gross_total) || computedGross,
-    philhealth_total: Number(data.philhealth_total) || 0,
-    senior_pwd_discount_total: Number(data.senior_pwd_discount_total) || 0,
+    gross_total: grossTotal,
+    philhealth_total: resolvedPhilhealthTotal,
+    senior_pwd_discount_total: resolvedStatutoryCredit,
+    ...(resolvedPaymentsTotal > 0
+      ? { cash_or_hmo_payments_total: resolvedPaymentsTotal }
+      : {}),
     net_balance_due:
       Number(data.net_balance_due) ||
       Math.max(
         0,
-        (Number(data.gross_total) || computedGross) -
-          (Number(data.philhealth_total) || 0) -
-          (Number(data.senior_pwd_discount_total) || 0)
+        grossTotal -
+          resolvedPhilhealthTotal -
+          resolvedStatutoryCredit -
+          resolvedPaymentsTotal
       ),
   };
 }
 
-function sanitizeCategory(
-  cat: unknown
-): ExtractedLineItem["category"] {
+function sanitizeCategory(cat: unknown): ExtractedLineItem["category"] {
   const validCategories: ExtractedLineItem["category"][] = [
     "Drugs/Medicines",
     "Medical Supplies",
@@ -500,17 +609,66 @@ function sanitizeCategory(
     "Miscellaneous",
   ];
 
-  if (typeof cat === "string" && validCategories.includes(cat as ExtractedLineItem["category"])) {
+  if (
+    typeof cat === "string" &&
+    validCategories.includes(cat as ExtractedLineItem["category"])
+  ) {
     return cat as ExtractedLineItem["category"];
   }
 
   const str = String(cat || "").toLowerCase();
-  if (str.includes("drug") || str.includes("med") || str.includes("pharmacy")) return "Drugs/Medicines";
-  if (str.includes("supply") || str.includes("material") || str.includes("sterile")) return "Medical Supplies";
-  if (str.includes("lab") || str.includes("xray") || str.includes("radiology") || str.includes("scan")) return "Laboratory/Diagnostics";
-  if (str.includes("room") || str.includes("board") || str.includes("bed") || str.includes("ward")) return "Room & Board";
-  if (str.includes("operating") || str.includes("or") || str.includes("dr") || str.includes("delivery") || str.includes("pacu")) return "Operating Room";
-  if (str.includes("prof") || str.includes("pf") || str.includes("doctor") || str.includes("physician") || str.includes("surgeon")) return "Professional Fees";
+  if (
+    str.includes("drug") ||
+    str.includes("med") ||
+    str.includes("pharmacy")
+  )
+    return "Drugs/Medicines";
+  if (
+    str.includes("supply") ||
+    str.includes("supplies") ||
+    str.includes("material") ||
+    str.includes("sterile") ||
+    str.includes("csr")
+  )
+    return "Medical Supplies";
+  if (
+    str.includes("lab") ||
+    str.includes("xray") ||
+    str.includes("x-ray") ||
+    str.includes("radiology") ||
+    str.includes("scan") ||
+    str.includes("diagnostic") ||
+    str.includes("pulmonary")
+  )
+    return "Laboratory/Diagnostics";
+  if (
+    str.includes("room_and_er") ||
+    str.includes("emergency") ||
+    str === "er" ||
+    str.includes("er fee") ||
+    str.includes("room") ||
+    str.includes("board") ||
+    str.includes("bed") ||
+    str.includes("ward") ||
+    str.includes("icu")
+  )
+    return "Room & Board";
+  if (
+    str.includes("operating") ||
+    str.includes("or") ||
+    str.includes("dr") ||
+    str.includes("delivery") ||
+    str.includes("pacu")
+  )
+    return "Operating Room";
+  if (
+    str.includes("prof") ||
+    str.includes("pf") ||
+    str.includes("doctor") ||
+    str.includes("physician") ||
+    str.includes("surgeon")
+  )
+    return "Professional Fees";
   return "Miscellaneous";
 }
 

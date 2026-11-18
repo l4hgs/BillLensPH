@@ -102,6 +102,15 @@ export interface ExtractedLineItem {
   is_vat_exempt?: boolean;
 }
 
+/**
+ * How the Senior/PWD statutory relief is computed for a line item.
+ * - `vat_inclusive_goods`: Drugs/Medicines & Medical Supplies carry 12% VAT in
+ *   their price, so relief = Billed − (Billed ÷ 1.12 × 0.80).
+ * - `vat_exempt_service`: hospital, diagnostic and physician services are
+ *   already VAT-exempt under NIRC Sec. 109(G) (RA 10963), so relief = Billed × 0.20.
+ */
+export type StatutoryVatTreatment = "vat_inclusive_goods" | "vat_exempt_service";
+
 export interface AuditedLineItem extends ExtractedLineItem {
   status: AuditTier;
   flag_reason?: string;
@@ -112,6 +121,39 @@ export interface AuditedLineItem extends ExtractedLineItem {
   statutory_discount_eligible?: boolean;
   /** True when the user manually changed this item's tier in the Audit Studio. */
   is_manual_override?: boolean;
+  /** VAT basis used for the statutory relief computation. */
+  vat_treatment?: StatutoryVatTreatment;
+  /** Full statutory relief this line is entitled to (before credits). */
+  expected_statutory_relief?: number;
+  /** Senior/PWD credit already granted on the SOA and allocated to this line. */
+  statutory_credit_applied?: number;
+}
+
+/**
+ * Bill-level reconciliation of the statutory discount against credits already
+ * printed on the SOA, so partial discounts are never double-counted.
+ */
+export interface StatutoryReconciliation {
+  /** Sum of expected relief across all eligible lines (RA 9994 / NIRC Sec. 109(G)). */
+  total_entitled: number;
+  /** Senior/PWD discount already credited on the SOA (footer credit + line-level discounts, de-duplicated). */
+  already_credited: number;
+  /** max(0, total_entitled − already_credited). */
+  net_additional: number;
+  /** Cash / HMO / deposit payments already posted on the SOA. */
+  cash_or_hmo_payments: number;
+  /** PhilHealth deductions already posted on the SOA. */
+  philhealth_deducted: number;
+  /** Sum of chargeable line items. */
+  computed_gross: number;
+  /** computed_gross − already_credited − payments − PhilHealth. */
+  computed_balance: number;
+  /** Balance due as printed on the SOA. */
+  stated_balance: number;
+  /** stated_balance − computed_balance (positive = hospital overstated the balance). */
+  arithmetic_discrepancy: number;
+  /** stated_balance − arithmetic_discrepancy − net_additional (before PhilHealth case-rate claims). */
+  reconciled_balance: number;
 }
 
 /**
@@ -145,7 +187,10 @@ export interface ExtractedBillData {
   line_items: ExtractedLineItem[];
   gross_total: number;
   philhealth_total: number;
+  /** Senior/PWD discount already credited on the SOA (e.g. the "Senior Citizen Discount" row in the PAYMENT/CN column). */
   senior_pwd_discount_total: number;
+  /** Cash, deposit, HMO or guarantor payments already posted on the SOA (never chargeable line items). */
+  cash_or_hmo_payments_total?: number;
   net_balance_due: number;
   is_senior_or_pwd?: boolean;
   /** Mutually exclusive statutory privilege (RA 9994 Senior Citizen vs RA 10754 PWD; no double-stacking). */
@@ -161,6 +206,7 @@ export interface AuditFlag {
     | "wrong_deduction_sequence"
     | "excess_hci_charge"
     | "nbb_violation"
+    | "arithmetic_discrepancy"
     | "compliance_note";
   severity: "high" | "medium" | "low";
   title: string;
@@ -228,6 +274,10 @@ export interface AuditEngineResult {
   disputed_overcharge_total: number;
   case_rate_shortfall?: number;
   nbb_savings?: number;
+  /** Positive amount by which the SOA's stated balance exceeds its own line arithmetic. */
+  arithmetic_discrepancy?: number;
+  /** Statutory discount vs. SOA credit reconciliation (present for Senior/PWD audits). */
+  statutory_reconciliation?: StatutoryReconciliation;
   philhealth_coverage_total: number;
   senior_pwd_savings: number;
   statutory_discount_type: StatutoryDiscountType;

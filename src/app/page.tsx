@@ -24,13 +24,7 @@ export default function HomePage() {
     supabase.auth
       .getSession()
       .then(({ data: { session } }) => {
-        if (session?.user) {
-          setUser(session.user);
-        } else {
-          return supabase.auth.getUser().then(({ data: { user: fetchedUser } }) => {
-            setUser(fetchedUser ?? null);
-          });
-        }
+        setUser(session?.user ?? null);
       })
       .catch(() => {});
 

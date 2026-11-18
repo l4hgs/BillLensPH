@@ -185,16 +185,36 @@ export function repairSkewedCookieArray(
       const jsonStr = decodeBase64UrlUtf8(combined.slice("base64-".length));
       const parsed = JSON.parse(jsonStr) as Record<string, unknown>;
 
-      // Only repair cookies that lack `rebased_at`. Never extend an already-rebased
-      // cookie into the future, or `@supabase/auth-js` will skip refreshing expired JWTs!
-      if (typeof parsed.rebased_at !== "number") {
-        parsed.expires_at = localNowSec - 60;
-        parsed.rebased_at = localNowSec - ONE_HOUR_SECONDS;
+      // A cookie only needs clock-skew repair if its `expires_at` is anchored to a
+      // server clock far behind the local clock (more than 24 hours behind `localNowSec`).
+      // If `expires_at` is already within the local clock's 24-hour window (or already has
+      // `rebased_at`), leave it untouched so we NEVER force-expire a valid session!
+      const rawExpiresAt =
+        typeof parsed.expires_at === "number" ? parsed.expires_at : 0;
+      const isServerClockSkewed =
+        rawExpiresAt > 0 && rawExpiresAt < localNowSec - 86400;
+
+      if (isServerClockSkewed && typeof parsed.rebased_at !== "number") {
+        const ttl =
+          typeof parsed.expires_in === "number" && parsed.expires_in > 0
+            ? parsed.expires_in
+            : ONE_HOUR_SECONDS;
+        parsed.expires_at = localNowSec + ttl;
+        parsed.rebased_at = localNowSec;
 
         const updatedEncoded =
           "base64-" + encodeBase64UrlUtf8(JSON.stringify(parsed));
 
-        if (!isChunked && updatedEncoded.length <= MAX_CHUNK_SIZE) {
+        // Remove all previous keys (unchunked and chunked) for this baseKey first
+        // so orphan chunks never coexist.
+        updatedMap.delete(baseKey);
+        let clearIdx = 0;
+        while (updatedMap.has(`${baseKey}.${clearIdx}`)) {
+          updatedMap.delete(`${baseKey}.${clearIdx}`);
+          clearIdx++;
+        }
+
+        if (updatedEncoded.length <= MAX_CHUNK_SIZE) {
           updatedMap.set(baseKey, updatedEncoded);
         } else {
           for (let i = 0; i * MAX_CHUNK_SIZE < updatedEncoded.length; i++) {
@@ -238,11 +258,23 @@ export function repairSkewedBrowserAuthCookies(): boolean {
     }
 
     const repaired = repairSkewedCookieArray(inputCookies);
+    const repairedNames = new Set(repaired.map((c) => c.name));
+
+    for (const orig of inputCookies) {
+      if (
+        /^sb-[a-z0-9]+-auth-token(?:\.\d+)?$/.test(orig.name) &&
+        !repairedNames.has(orig.name)
+      ) {
+        document.cookie = `${orig.name}=; path=/; max-age=0; SameSite=Lax`;
+        anyUpdated = true;
+      }
+    }
+
     for (let i = 0; i < repaired.length; i++) {
       const { name, value } = repaired[i];
       const original = inputCookies.find((c) => c.name === name);
       if (!original || original.value !== value) {
-        document.cookie = `${name}=${value}; path=/; max-age=${
+        document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${
           60 * 60 * 24 * 400
         }; SameSite=Lax`;
         anyUpdated = true;

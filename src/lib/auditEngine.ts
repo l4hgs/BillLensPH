@@ -11,10 +11,18 @@ import type {
   MatchedCasePackage,
   PhilHealthContributorType,
   StatutoryDiscountType,
+  StatutoryReconciliation,
   StatutoryRule,
 } from "@/types/audit";
 import { formatPHP } from "./utils";
 import { detectVatExemptFromDescription } from "./gemini";
+import {
+  FACILITY_SERVICE_CATEGORIES,
+  computeStatutoryRelief,
+  resolveBillingCategory,
+  round2,
+  vatTreatmentFor,
+} from "./billingClassification";
 import {
   bestPackageForDiagnosis,
   containsPhrase,
@@ -144,6 +152,7 @@ const DEFAULT_STATUTORY_RULE: StatutoryRule = {
     "Laboratory/Diagnostics",
     "Professional Fees",
     "Room & Board",
+    "Operating Room",
   ],
   citation: "RA 9994 / RA 10754",
 };
@@ -319,10 +328,18 @@ export function runAuditEngine(
 
   let disputedOverchargeTotal = 0;
   let estimatedSeniorSavings = 0;
+  let totalExpectedStatutoryRelief = 0;
   let hasLineLevelSequenceFlag = false;
 
+  // Normalize line item categories up front so cost centers like "Emergency Room"
+  // or "Operating Room" are never stranded in "Miscellaneous" on legacy saved bills.
+  const normalizedLineItems = extracted.line_items.map((item) => ({
+    ...item,
+    category: resolveBillingCategory(item.description, item.category),
+  }));
+
   // 2. Audit every line item
-  const auditedItems: AuditedLineItem[] = extracted.line_items.map((item) => {
+  const auditedItems: AuditedLineItem[] = normalizedLineItems.map((item) => {
     const manualStatus = options.manualStatusOverrides?.[item.id];
     if (manualStatus === "covered" || manualStatus === "out_of_pocket") {
       return {
@@ -341,6 +358,8 @@ export function runAuditEngine(
     let isUnbundled = false;
     let statutoryEligible = false;
     let suggestedDeduction: number | undefined;
+    let vatTreatment: AuditedLineItem["vat_treatment"];
+    let expectedStatutoryRelief: number | undefined;
 
     // Check A: Fully covered or zero remaining balance
     const itemBalance =
@@ -371,7 +390,7 @@ export function runAuditEngine(
         matchedPkgName = pkg.keyword;
         flagReason = `Hospital charged ${formatPHP(itemBalance)} out-of-pocket for "${item.description}", which is a mandatory inclusive item under PhilHealth Case Rate ${pkg.code} (${pkg.keyword}).`;
         suggestedDeduction = itemBalance;
-        disputedOverchargeTotal += itemBalance;
+        disputedOverchargeTotal = round2(disputedOverchargeTotal + itemBalance);
 
         flags.push({
           type: "unbundled_charge",
@@ -385,87 +404,127 @@ export function runAuditEngine(
       }
     }
 
-    // Check C: Statutory Senior Citizen / PWD Discount & Mandatory Sequence
-    // Under PhilHealth Advisory No. 2023-0036 and RA 9994 / RA 10754:
-    //   1. 12% VAT Exemption is deducted FIRST from gross VAT-inclusive charges (unless already VAT-exempt).
-    //   2. 20% Senior/PWD Discount is applied NEXT to the VAT-exempt amount.
-    //   3. PhilHealth Case Rate benefit is deducted LAST from the remaining balance.
-    if (!isUnbundled && isSeniorOrPwd) {
-      if (statutoryRule.eligible_categories.includes(item.category)) {
-        statutoryEligible = true;
-        const currentDiscount = item.discount_applied || 0;
-        const philhealthOnItem = item.philhealth_deducted || 0;
-        const alreadyVatExempt =
-          Boolean(item.is_vat_exempt) ||
-          detectVatExemptFromDescription(item.description);
+    // Check C: Two-Tier Statutory Senior Citizen / PWD Discount & Mandatory Sequence
+    // Under RA 9994 / RA 10754, NIRC Sec. 109(G) (TRAIN Law / RA 10963), and BIR RR 7-2010:
+    //   - Tier 1 (VAT-Inclusive Goods: Drugs/Medicines & Medical Supplies):
+    //     Unless already VAT-exempt, strip 12% VAT first, then apply 20% discount:
+    //     Expected Relief = Billed − (Billed ÷ 1.12 × 0.80).
+    //   - Tier 2 (NIRC Sec. 109(G) VAT-Exempt Hospital & Medical Services: Room & Board / ER,
+    //     Operating Room, Laboratory/Diagnostics, Professional Fees):
+    //     Hospital, diagnostic, and physician services are VAT-exempt by law for all patients,
+    //     so apply a straight 20% discount: Expected Relief = Billed × 0.20.
+    const isCategoryEligible =
+      statutoryRule.eligible_categories.includes(item.category) ||
+      (statutoryRule.eligible_categories.includes("Room & Board") &&
+        FACILITY_SERVICE_CATEGORIES.has(item.category));
 
-        const expectedVatExempt = alreadyVatExempt
-          ? item.total_amount
-          : item.total_amount / statutoryRule.vat_divisor;
-        const vatSaved = Math.max(0, item.total_amount - expectedVatExempt);
-        const expectedDiscount =
-          expectedVatExempt * statutoryRule.discount_rate;
-        const fullStatutoryRelief = vatSaved + expectedDiscount;
+    if (!isUnbundled && isSeniorOrPwd && isCategoryEligible) {
+      statutoryEligible = true;
+      const currentDiscount = item.discount_applied || 0;
+      const philhealthOnItem = item.philhealth_deducted || 0;
+      const alreadyVatExemptGoods =
+        Boolean(item.is_vat_exempt) ||
+        detectVatExemptFromDescription(item.description);
 
-        // Statutory relief cannot exceed the remaining charge after PhilHealth
-        const maxPossibleRelief = Math.min(
+      // If the hospital already applied a discount exceeding the straight 20% rate
+      // (meaning the hospital priced the line VAT-inclusive and bundled 12% VAT +
+      // partial 20% discount into `discount_applied`), evaluate on VAT-inclusive basis.
+      const hospitalBundledVatInDiscount =
+        currentDiscount > item.total_amount * statutoryRule.discount_rate + 1;
+
+      vatTreatment = hospitalBundledVatInDiscount
+        ? "vat_inclusive_goods"
+        : vatTreatmentFor(item.category, alreadyVatExemptGoods);
+
+      const fullStatutoryRelief = computeStatutoryRelief(
+        item.total_amount,
+        vatTreatment,
+        statutoryRule.vat_divisor,
+        statutoryRule.discount_rate
+      );
+      const expectedVatExempt =
+        vatTreatment === "vat_inclusive_goods"
+          ? item.total_amount / statutoryRule.vat_divisor
+          : item.total_amount;
+      const expectedDiscount = round2(
+        expectedVatExempt * statutoryRule.discount_rate
+      );
+
+      // Statutory relief cannot exceed the remaining charge after PhilHealth
+      const maxPossibleRelief = round2(
+        Math.min(
           fullStatutoryRelief,
           Math.max(0, item.total_amount - philhealthOnItem)
+        )
+      );
+      expectedStatutoryRelief = maxPossibleRelief;
+      totalExpectedStatutoryRelief = round2(
+        totalExpectedStatutoryRelief + maxPossibleRelief
+      );
+      const discountPct = Math.round(statutoryRule.discount_rate * 100);
+
+      // Detect Reversed Deduction Sequence ("PhilHealth First" violation):
+      // Hospital applied a discount (> 0) AND deducted PhilHealth (> 0), but computed
+      // the 20% discount AFTER subtracting PhilHealth instead of BEFORE.
+      if (
+        philhealthOnItem > 0 &&
+        currentDiscount > 0 &&
+        currentDiscount < maxPossibleRelief - 1
+      ) {
+        status = "review_worthy";
+        hasLineLevelSequenceFlag = true;
+        const sequenceOvercharge = round2(
+          Math.max(0, maxPossibleRelief - currentDiscount)
         );
-        const discountPct = Math.round(statutoryRule.discount_rate * 100);
+        suggestedDeduction = round2(
+          (suggestedDeduction || 0) + sequenceOvercharge
+        );
+        estimatedSeniorSavings = round2(
+          estimatedSeniorSavings + sequenceOvercharge
+        );
 
-        // Detect Reversed Deduction Sequence ("PhilHealth First" violation):
-        // Hospital applied a discount (> 0) AND deducted PhilHealth (> 0), but computed
-        // the 20% discount AFTER subtracting PhilHealth instead of BEFORE.
-        if (
-          philhealthOnItem > 0 &&
-          currentDiscount > 0 &&
-          currentDiscount < maxPossibleRelief - 1
-        ) {
-          status = "review_worthy";
-          hasLineLevelSequenceFlag = true;
-          const sequenceOvercharge = Math.max(
-            0,
-            maxPossibleRelief - currentDiscount
-          );
-          suggestedDeduction = (suggestedDeduction || 0) + sequenceOvercharge;
-          estimatedSeniorSavings += sequenceOvercharge;
+        const sequenceReason = `Hospital deducted PhilHealth (${formatPHP(philhealthOnItem)}) BEFORE computing the ${discountPct}% ${privilegeLabel} discount on "${item.description}", unlawfully reducing your statutory relief by ${formatPHP(sequenceOvercharge)}. Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${effectiveCitation}, the 12% VAT exemption and ${discountPct}% discount must be deducted from gross charges FIRST, and PhilHealth deducted LAST.`;
+        flagReason = flagReason
+          ? `${flagReason} ${sequenceReason}`
+          : sequenceReason;
 
-          const sequenceReason = `Hospital deducted PhilHealth (${formatPHP(philhealthOnItem)}) BEFORE computing the ${discountPct}% ${privilegeLabel} discount on "${item.description}", unlawfully reducing your statutory relief by ${formatPHP(sequenceOvercharge)}. Under PhilHealth Advisory No. 2023-0036, PhilHealth Circular 0056-2012, and ${effectiveCitation}, the 12% VAT exemption and ${discountPct}% discount must be deducted from gross charges FIRST, and PhilHealth deducted LAST.`;
-          flagReason = flagReason
-            ? `${flagReason} ${sequenceReason}`
-            : sequenceReason;
+        flags.push({
+          type: "wrong_deduction_sequence",
+          severity: "high",
+          title: `Wrong Deduction Sequence: ${item.description}`,
+          description: `${sequenceReason} If the billing office refuses to recompute before discharge, report to your LGU ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).`,
+          potential_savings: sequenceOvercharge,
+          item_id: item.id,
+        });
+      } else if (
+        currentDiscount <
+        expectedDiscount * statutoryRule.incomplete_threshold
+      ) {
+        status = "review_worthy";
+        const missedRelief = round2(
+          Math.max(0, maxPossibleRelief - currentDiscount)
+        );
+        suggestedDeduction = round2((suggestedDeduction || 0) + missedRelief);
+        estimatedSeniorSavings = round2(estimatedSeniorSavings + missedRelief);
+        const vatNote =
+          vatTreatment === "vat_inclusive_goods"
+            ? "+ 12% VAT exemption"
+            : item.category === "Drugs/Medicines" ||
+                item.category === "Medical Supplies"
+              ? "(VAT-exempt item)"
+              : "(VAT-exempt hospital/medical service under NIRC Sec. 109(G))";
+        flagReason = flagReason
+          ? `${flagReason} Also missing statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} (potential relief: ${formatPHP(missedRelief)}).`
+          : `Missing or incomplete statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} under ${effectiveCitation} (potential relief: ${formatPHP(missedRelief)}).`;
 
-          flags.push({
-            type: "wrong_deduction_sequence",
-            severity: "high",
-            title: `Wrong Deduction Sequence: ${item.description}`,
-            description: `${sequenceReason} If the billing office refuses to recompute before discharge, report to your LGU ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).`,
-            potential_savings: sequenceOvercharge,
-            item_id: item.id,
-          });
-        } else if (
-          currentDiscount <
-          expectedDiscount * statutoryRule.incomplete_threshold
-        ) {
-          status = "review_worthy";
-          const missedRelief = Math.max(0, maxPossibleRelief - currentDiscount);
-          suggestedDeduction = (suggestedDeduction || 0) + missedRelief;
-          estimatedSeniorSavings += missedRelief;
-          const vatNote = alreadyVatExempt ? "(VAT-exempt item)" : "+ 12% VAT exemption";
-          flagReason = flagReason
-            ? `${flagReason} Also missing statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} (potential relief: ${formatPHP(missedRelief)}).`
-            : `Missing or incomplete statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} under ${effectiveCitation} (potential relief: ${formatPHP(missedRelief)}).`;
-
-          flags.push({
-            type: "missing_statutory_discount",
-            severity: "medium",
-            title: `Missing ${privilegeLabel} Relief: ${item.description}`,
-            description: `Eligible for ${effectiveCitation} statutory discount (deducted prior to PhilHealth per Advisory 2023-0036; escalate unresolved violations to LGU ${escalationAgency}). Expected savings: ${formatPHP(missedRelief)}.`,
-            potential_savings: missedRelief,
-            item_id: item.id,
-          });
-        }
+        flags.push({
+          type: "missing_statutory_discount",
+          severity: "medium",
+          title: `Missing ${privilegeLabel} Relief: ${item.description}`,
+          description: `Eligible for ${effectiveCitation} statutory discount (deducted prior to PhilHealth per Advisory 2023-0036; escalate unresolved violations to LGU ${escalationAgency}). Expected savings: ${formatPHP(missedRelief)}.`,
+          potential_savings: missedRelief,
+          item_id: item.id,
+        });
       }
     }
 
@@ -485,9 +544,58 @@ export function runAuditEngine(
       is_unbundled_overcharge: isUnbundled,
       statutory_discount_eligible: statutoryEligible,
       suggested_deduction: suggestedDeduction,
+      ...(vatTreatment ? { vat_treatment: vatTreatment } : {}),
+      ...(expectedStatutoryRelief !== undefined
+        ? { expected_statutory_relief: expectedStatutoryRelief }
+        : {}),
       ...(isManual ? { is_manual_override: true } : {}),
     };
   });
+
+  // 2a. Partial Credit Reconciliation (Prevent Double-Counting Existing SOA Credits):
+  //     Reconcile `totalExpectedStatutoryRelief` against credits already granted in the
+  //     SOA PAYMENT/CN column (`senior_pwd_discount_total`) and per-line `discount_applied`.
+  const lineDiscountSum = round2(
+    normalizedLineItems.reduce((sum, i) => sum + (i.discount_applied || 0), 0)
+  );
+  const headerDiscountCredit = round2(extracted.senior_pwd_discount_total || 0);
+  const totalAlreadyCreditedDiscount =
+    lineDiscountSum > 0 && headerDiscountCredit > 0
+      ? Math.abs(headerDiscountCredit - lineDiscountSum) <= 1
+        ? Math.max(headerDiscountCredit, lineDiscountSum)
+        : round2(headerDiscountCredit + lineDiscountSum)
+      : round2(headerDiscountCredit + lineDiscountSum);
+
+  const unallocatedHeaderCredit = Math.max(
+    0,
+    round2(totalAlreadyCreditedDiscount - lineDiscountSum)
+  );
+
+  if (isSeniorOrPwd && unallocatedHeaderCredit > 0) {
+    // Annotate any line item whose expected statutory relief matches the lump-sum
+    // SOA credit (e.g. CT-Scan ₱6,200 × 20% = ₱1,240.00 Senior Citizen Discount credit)
+    for (const item of auditedItems) {
+      if (
+        item.statutory_discount_eligible &&
+        item.expected_statutory_relief !== undefined &&
+        Math.abs(item.expected_statutory_relief - unallocatedHeaderCredit) <=
+          0.05
+      ) {
+        item.statutory_credit_applied = unallocatedHeaderCredit;
+        if (item.flag_reason) {
+          item.flag_reason = `${item.flag_reason} Note: SOA PAYMENT/CN column already credits ${formatPHP(unallocatedHeaderCredit)} (matching this item's 20% discount), which is netted out in the statement reconciliation below.`;
+        }
+        break;
+      }
+    }
+
+    if (!hasLineLevelSequenceFlag) {
+      estimatedSeniorSavings = Math.max(
+        0,
+        round2(totalExpectedStatutoryRelief - totalAlreadyCreditedDiscount)
+      );
+    }
+  }
 
   // 2b. Statement-Summary Level Reversed Deduction Sequence Check:
   //     When a hospital applies Senior/PWD discount and PhilHealth as lump sums in the SOA footer
@@ -510,15 +618,15 @@ export function runAuditEngine(
     );
 
     if (extracted.net_balance_due > legalNetPayable + 1) {
-      const summaryOvercharge = Math.max(
-        0,
-        extracted.net_balance_due - legalNetPayable
+      const summaryOvercharge = round2(
+        Math.max(0, extracted.net_balance_due - legalNetPayable)
       );
-      const additionalSavings = Math.max(
-        0,
-        summaryOvercharge - estimatedSeniorSavings
+      const additionalSavings = round2(
+        Math.max(0, summaryOvercharge - estimatedSeniorSavings)
       );
-      estimatedSeniorSavings += additionalSavings;
+      estimatedSeniorSavings = round2(
+        estimatedSeniorSavings + additionalSavings
+      );
 
       flags.unshift({
         type: "wrong_deduction_sequence",
@@ -531,8 +639,72 @@ export function runAuditEngine(
   }
 
   // 3. Separate HCI Fee vs PF Share Cap Verification & Fair Out-of-Pocket Math
-  const grossTotal = extracted.gross_total;
-  const actualOutOfPocket = extracted.net_balance_due;
+  const computedItemsGross = round2(
+    normalizedLineItems.reduce((sum, i) => sum + i.total_amount, 0)
+  );
+  const grossTotal = round2(extracted.gross_total || computedItemsGross);
+  const actualOutOfPocket = round2(extracted.net_balance_due);
+
+  // 3a. Arithmetic & Rounding Discrepancy Check on the Hospital's Stated Balance
+  const explicitCashPayments = round2(
+    extracted.cash_or_hmo_payments_total ?? 0
+  );
+  const philhealthDeductedTotal = round2(extracted.philhealth_total || 0);
+  const balanceBeforePayments = round2(
+    grossTotal - totalAlreadyCreditedDiscount - philhealthDeductedTotal
+  );
+
+  // Support both explicit `cash_or_hmo_payments_total` and legacy saved OCR records
+  // where a whole-peso cash/deposit payment (e.g. ₱4,960.00) was subtracted in `net_balance_due`.
+  let effectiveCashPayments = explicitCashPayments;
+  if (
+    effectiveCashPayments === 0 &&
+    actualOutOfPocket > 0 &&
+    balanceBeforePayments - actualOutOfPocket > 10
+  ) {
+    const rawGap = balanceBeforePayments - actualOutOfPocket;
+    const roundedTenPesoPayment = Math.round(rawGap / 10) * 10;
+    const residual = round2(
+      actualOutOfPocket - (balanceBeforePayments - roundedTenPesoPayment)
+    );
+    if (
+      roundedTenPesoPayment > 0 &&
+      Math.abs(residual) > 0.005 &&
+      Math.abs(residual) <= 5
+    ) {
+      effectiveCashPayments = roundedTenPesoPayment;
+    }
+  }
+
+  const computedNetBalance = round2(
+    grossTotal -
+      totalAlreadyCreditedDiscount -
+      effectiveCashPayments -
+      philhealthDeductedTotal
+  );
+
+  let arithmeticDiscrepancy = 0;
+  if (
+    actualOutOfPocket > 0 &&
+    (effectiveCashPayments > 0 ||
+      (Math.abs(actualOutOfPocket - computedNetBalance) > 0.005 &&
+        Math.abs(actualOutOfPocket - computedNetBalance) <= 100))
+  ) {
+    const rawDiff = round2(actualOutOfPocket - computedNetBalance);
+    if (Math.abs(rawDiff) > 0.005) {
+      arithmeticDiscrepancy = rawDiff;
+    }
+  }
+
+  if (arithmeticDiscrepancy > 0) {
+    flags.push({
+      type: "arithmetic_discrepancy",
+      severity: "medium",
+      title: `SOA Arithmetic / Rounding Discrepancy (+${formatPHP(arithmeticDiscrepancy)})`,
+      description: `Hospital's stated balance due (${formatPHP(actualOutOfPocket)}) exceeds the computed net balance (${formatPHP(grossTotal)} gross − ${formatPHP(totalAlreadyCreditedDiscount)} statutory discount credit${effectiveCashPayments > 0 ? ` − ${formatPHP(effectiveCashPayments)} payment` : ""}${philhealthDeductedTotal > 0 ? ` − ${formatPHP(philhealthDeductedTotal)} PhilHealth` : ""} = ${formatPHP(computedNetBalance)}) by ${formatPHP(arithmeticDiscrepancy)}.`,
+      potential_savings: arithmeticDiscrepancy,
+    });
+  }
 
   const totalHciCap = matchedPackages.reduce((sum, p) => sum + p.hci_fee, 0);
   const totalPfCap = matchedPackages.reduce((sum, p) => sum + p.prof_fee, 0);
@@ -541,10 +713,10 @@ export function runAuditEngine(
     0
   );
 
-  const lineLevelHciDeducted = extracted.line_items
+  const lineLevelHciDeducted = normalizedLineItems
     .filter((i) => i.category !== "Professional Fees")
     .reduce((sum, i) => sum + (i.philhealth_deducted || 0), 0);
-  const lineLevelPfDeducted = extracted.line_items
+  const lineLevelPfDeducted = normalizedLineItems
     .filter((i) => i.category === "Professional Fees")
     .reduce((sum, i) => sum + (i.philhealth_deducted || 0), 0);
   const hasLineLevelSplit = lineLevelHciDeducted + lineLevelPfDeducted > 0;
@@ -608,9 +780,12 @@ export function runAuditEngine(
     (extracted.philhealth_total > 0 || extracted.senior_pwd_discount_total > 0)
       ? Math.max(
           0,
-          grossTotal -
-            extracted.philhealth_total -
-            extracted.senior_pwd_discount_total
+          round2(
+            grossTotal -
+              extracted.philhealth_total -
+              extracted.senior_pwd_discount_total -
+              effectiveCashPayments
+          )
         )
       : actualOutOfPocket;
 
@@ -618,9 +793,17 @@ export function runAuditEngine(
     options.eligibilitySnapshot ?? extracted.eligibility_snapshot
   );
 
-  const preNbbDisputable =
-    disputedOverchargeTotal + estimatedSeniorSavings + caseRateShortfall;
-  const balanceBeforeNbb = Math.max(0, effectiveHospitalDue - preNbbDisputable);
+  const positiveArithmeticDiscrepancy = Math.max(0, arithmeticDiscrepancy);
+  const preNbbDisputable = round2(
+    disputedOverchargeTotal +
+      estimatedSeniorSavings +
+      caseRateShortfall +
+      positiveArithmeticDiscrepancy
+  );
+  const balanceBeforeNbb = Math.max(
+    0,
+    round2(effectiveHospitalDue - preNbbDisputable)
+  );
 
   // 4. No Balance Billing (NBB) / Zero Co-Payment & MDR Readiness Check
   //    Under PhilHealth Circular 2016-0020 & RA 11223 (UHC Act), Indirect Contributors
@@ -680,8 +863,27 @@ export function runAuditEngine(
     });
   }
 
-  const totalDisputable = preNbbDisputable + nbbSavings;
-  const fairOutOfPocket = Math.max(0, effectiveHospitalDue - totalDisputable);
+  const totalDisputable = round2(preNbbDisputable + nbbSavings);
+  const fairOutOfPocket = Math.max(
+    0,
+    round2(effectiveHospitalDue - totalDisputable)
+  );
+
+  const statutoryReconciliation: StatutoryReconciliation | undefined =
+    isSeniorOrPwd
+      ? {
+          total_entitled: totalExpectedStatutoryRelief,
+          already_credited: totalAlreadyCreditedDiscount,
+          net_additional: estimatedSeniorSavings,
+          cash_or_hmo_payments: effectiveCashPayments,
+          philhealth_deducted: philhealthDeductedTotal,
+          computed_gross: grossTotal,
+          computed_balance: computedNetBalance,
+          stated_balance: actualOutOfPocket,
+          arithmetic_discrepancy: arithmeticDiscrepancy,
+          reconciled_balance: fairOutOfPocket,
+        }
+      : undefined;
 
   // Generate Negotiation Brief Summary
   let negotiationBrief = `AUDIT REPORT SUMMARY for Statement #${extracted.statement_number || "N/A"}\n`;
@@ -704,8 +906,16 @@ export function runAuditEngine(
 
   if (estimatedSeniorSavings > 0) {
     negotiationBrief += `⚠️ STATUTORY ${privilegeLabel.toUpperCase()} RELIEF DISCREPANCY: ${formatPHP(estimatedSeniorSavings)}\n`;
-    negotiationBrief += `Applicable under ${effectiveCitation}, PhilHealth Advisory No. 2023-0036, and PhilHealth Circular 0056-2012 (12% VAT exemption and 20% discount must be deducted from gross charges FIRST, before subtracting PhilHealth).\n`;
+    if (totalAlreadyCreditedDiscount > 0) {
+      negotiationBrief += `Total Statutory Entitlement: ${formatPHP(totalExpectedStatutoryRelief)} | Less Already Credited on SOA: ${formatPHP(totalAlreadyCreditedDiscount)} | Net Additional Relief: ${formatPHP(estimatedSeniorSavings)}\n`;
+    }
+    negotiationBrief += `Applicable under ${effectiveCitation}, NIRC Sec. 109(G), PhilHealth Advisory No. 2023-0036, and PhilHealth Circular 0056-2012.\n`;
     negotiationBrief += `Escalation Path: Local LGU ${escalationAgency} or PhilHealth Callback Channel (0917-898-7442).\n\n`;
+  }
+
+  if (arithmeticDiscrepancy > 0) {
+    negotiationBrief += `⚠️ SOA ARITHMETIC / ROUNDING DISCREPANCY: ${formatPHP(arithmeticDiscrepancy)}\n`;
+    negotiationBrief += `Printed balance (${formatPHP(actualOutOfPocket)}) exceeds computed net balance (${formatPHP(computedNetBalance)}) by ${formatPHP(arithmeticDiscrepancy)}.\n\n`;
   }
 
   if (nbbSavings > 0) {
@@ -731,6 +941,12 @@ export function runAuditEngine(
     disputed_overcharge_total: disputedOverchargeTotal,
     case_rate_shortfall: caseRateShortfall,
     nbb_savings: nbbSavings,
+    ...(arithmeticDiscrepancy !== 0
+      ? { arithmetic_discrepancy: arithmeticDiscrepancy }
+      : {}),
+    ...(statutoryReconciliation
+      ? { statutory_reconciliation: statutoryReconciliation }
+      : {}),
     philhealth_coverage_total: extracted.philhealth_total || totalPhilHealthRate,
     senior_pwd_savings: estimatedSeniorSavings,
     statutory_discount_type: resolvedDiscountType,

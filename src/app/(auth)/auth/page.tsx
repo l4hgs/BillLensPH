@@ -57,17 +57,8 @@ export default function AuthPage() {
           data: { session },
         } = await supabase.auth.getSession();
 
-        if (session?.user && isMounted) {
-          setCurrentUser(session.user);
-          setCheckingSession(false);
-          return;
-        }
-
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
         if (isMounted) {
-          setCurrentUser(user ?? null);
+          setCurrentUser(session?.user ?? null);
         }
       } catch {
         // Ignore network errors on initial check
@@ -115,6 +106,10 @@ export default function AuthPage() {
     const supabase = createClient();
 
     try {
+      // Ensure GoTrueClient's initializePromise has settled before signing in
+      // so initial session recovery never races with or overwrites the new session.
+      await supabase.auth.getSession();
+
       if (isSignUp) {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -130,9 +125,7 @@ export default function AuthPage() {
         if (error) throw error;
 
         if (data.session?.user) {
-          setCurrentUser(data.session.user);
-          router.push(getRedirectDestination());
-          router.refresh();
+          window.location.assign(getRedirectDestination());
           return;
         }
 
@@ -143,15 +136,14 @@ export default function AuthPage() {
           });
 
         if (!signInError && signInData.session?.user) {
-          setCurrentUser(signInData.session.user);
-          router.push(getRedirectDestination());
-          router.refresh();
+          window.location.assign(getRedirectDestination());
           return;
         }
 
         setSuccessMessage(
           "Confirmation link sent! Please check your email inbox to activate your account."
         );
+        setLoading(false);
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
@@ -161,16 +153,15 @@ export default function AuthPage() {
         if (error) throw error;
 
         if (data.session?.user) {
-          setCurrentUser(data.session.user);
-          router.push(getRedirectDestination());
-          router.refresh();
+          window.location.assign(getRedirectDestination());
+          return;
         }
+        setLoading(false);
       }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Authentication error.";
       setErrorMessage(message);
-    } finally {
       setLoading(false);
     }
   };
@@ -182,6 +173,10 @@ export default function AuthPage() {
     const supabase = createClient();
 
     try {
+      // Ensure GoTrueClient's initializePromise has settled before writing the
+      // PKCE code_verifier cookie so initial recovery cannot wipe it.
+      await supabase.auth.getSession();
+
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
         getRedirectDestination()
       )}`;

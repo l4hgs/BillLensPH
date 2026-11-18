@@ -95,8 +95,14 @@ body {
     display: none !important;
   }
 
-  .print-avoid-break {
-    break-inside: avoid;
-    page-break-inside: avoid;
+  .print-avoid-break,
+  tr.print-avoid-break,
+  tr.print-avoid-break td {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  tfoot {
+    display: table-row-group;
   }
 }

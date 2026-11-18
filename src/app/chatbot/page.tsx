@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormattedChatContent } from "@/components/audit/AuditChatbotDrawer";
-import { createClient } from "@/lib/supabase/client";
+import { useChatbotBackground } from "@/components/providers/ChatbotBackgroundProvider";
 import { cn, formatPHP } from "@/lib/utils";
 import type { AuditEngineResult } from "@/types/audit";
 
@@ -48,79 +48,31 @@ function getMessageText(message: UIMessage): string {
 }
 
 export default function ChatbotPage() {
-  const supabase = useMemo(() => createClient(), []);
-  const [audits, setAudits] = useState<AuditOption[]>([]);
-  const [selectedAuditId, setSelectedAuditId] = useState<string>("");
-  const [input, setInput] = useState("");
+  const {
+    messages,
+    input,
+    setInput,
+    status,
+    isStreaming,
+    error,
+    clearError,
+    sendQuery,
+    stop,
+    regenerate,
+    clearChat,
+    audits,
+    selectedAuditId,
+    setSelectedAuditId,
+    selectedAudit,
+    markAsRead,
+  } = useChatbotBackground();
+
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from("audits")
-        .select("id, hospital_name, total_billed, created_at, audit_results")
-        .order("created_at", { ascending: false })
-        .limit(15);
-
-      if (cancelled || !data) return;
-
-      const mapped: AuditOption[] = data.map((row) => ({
-        id: row.id,
-        hospital_name: row.hospital_name || "Philippine Healthcare Institution",
-        total_billed: Number(row.total_billed) || 0,
-        created_at: row.created_at,
-        audit_results:
-          row.audit_results &&
-          typeof row.audit_results === "object" &&
-          Array.isArray((row.audit_results as unknown as AuditEngineResult).line_items)
-            ? (row.audit_results as unknown as AuditEngineResult)
-            : null,
-      }));
-
-      setAudits(mapped);
-      const firstAnalyzed = mapped.find((a) => a.audit_results !== null);
-      if (firstAnalyzed) {
-        setSelectedAuditId(firstAnalyzed.id);
-      } else if (mapped[0]) {
-        setSelectedAuditId(mapped[0].id);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
-
-  const selectedAudit = useMemo(
-    () => audits.find((a) => a.id === selectedAuditId) ?? null,
-    [audits, selectedAuditId]
-  );
-
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/audit/chat",
-      }),
-    []
-  );
-
-  const {
-    messages,
-    sendMessage,
-    status,
-    error,
-    stop,
-    regenerate,
-    setMessages,
-    clearError,
-  } = useChat({
-    id: `standalone-chatbot-${selectedAuditId || "general"}`,
-    transport,
-  });
-
-  const isStreaming = status === "submitted" || status === "streaming";
+    markAsRead();
+  }, [markAsRead]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -130,24 +82,12 @@ export default function ChatbotPage() {
   }, [messages, status]);
 
   const handleSendQuery = async (queryText: string) => {
-    const trimmed = queryText.trim();
-    if (!trimmed || isStreaming) return;
-    setInput("");
-    clearError();
-    await sendMessage(
-      { text: trimmed },
-      {
-        body: {
-          audit_id: selectedAudit?.id || undefined,
-          audit_snapshot: selectedAudit?.audit_results || undefined,
-        },
-      }
-    );
+    await sendQuery(queryText);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await handleSendQuery(input);
+    await sendQuery(input);
   };
 
   const commonQuestions = useMemo(() => {
@@ -342,15 +282,7 @@ export default function ChatbotPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    regenerate({
-                      body: {
-                        audit_id: selectedAudit?.id || undefined,
-                        audit_snapshot:
-                          selectedAudit?.audit_results || undefined,
-                      },
-                    })
-                  }
+                  onClick={() => regenerate()}
                   className="h-7 px-2.5 text-[11px]"
                 >
                   <RotateCcw className="h-3 w-3" />
@@ -422,7 +354,7 @@ export default function ChatbotPage() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Billy about PhilHealth case rates, doctor PF caps, or item charges..."
+            placeholder="Ask Billy about hospital bills, PhilHealth case rates, or medical discounts..."
             disabled={isStreaming}
             className="h-10 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:opacity-60 transition-colors"
           />
@@ -467,28 +399,28 @@ export default function ChatbotPage() {
           aria-labelledby="clear-chat-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 transition-opacity duration-150"
         >
-          <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl space-y-4 transition-opacity duration-150">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0 shadow-2xs">
-                <Trash2 className="w-5 h-5" />
+          <div className="w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 shadow-xl space-y-3 transition-opacity duration-150">
+            <div className="flex items-start gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0 shadow-2xs">
+                <Trash2 className="w-4 h-4" />
               </div>
-              <div className="space-y-1">
-                <h3 id="clear-chat-title" className="text-sm font-bold text-slate-900">
+              <div className="space-y-0.5">
+                <h3 id="clear-chat-title" className="text-xs font-bold text-slate-900">
                   Clear conversation?
                 </h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  This will delete all messages from this session. You can ask a new question anytime.
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Delete all messages from this session.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex items-center justify-end gap-1.5 pt-1">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
                 onClick={() => setShowClearConfirm(false)}
-                className="rounded-full h-8 px-4 text-xs font-semibold"
+                className="rounded-full h-7 px-3 text-[11px] font-semibold"
               >
                 Cancel
               </Button>
@@ -498,11 +430,11 @@ export default function ChatbotPage() {
                 size="sm"
                 onClick={() => {
                   stop();
-                  setMessages([]);
+                  clearChat();
                   clearError();
                   setShowClearConfirm(false);
                 }}
-                className="rounded-full h-8 px-4 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white border-transparent"
+                className="rounded-full h-7 px-3 text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white border-transparent"
               >
                 Clear Chat
               </Button>

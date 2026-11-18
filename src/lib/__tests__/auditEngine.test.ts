@@ -254,13 +254,13 @@ describe("Golden fixture bills (runAuditEngine)", () => {
       net_balance_due: 11200,
     };
 
-    // Standard RA 9994 / RA 10754: 11,200 / 1.12 = 10,000 VAT-exempt -> 20% = 2,000 discount -> 3,200 total relief
+    // Under NIRC Sec. 109(G) (RA 10963), Laboratory/Diagnostics is already VAT-exempt -> straight 20% = 2,240 relief
     const standardRes = runAuditEngine(bill, {
       auditId: "test-senior-default",
       referencePackages: CATALOG,
     });
     expect(standardRes.line_items[0].status).toBe("review_worthy");
-    expect(standardRes.senior_pwd_savings).toBeCloseTo(3200, 2);
+    expect(standardRes.senior_pwd_savings).toBeCloseTo(2240, 2);
 
     // Custom statutory rule from DB (e.g. 25% discount rate)
     const customRule: StatutoryRule = {
@@ -277,8 +277,8 @@ describe("Golden fixture bills (runAuditEngine)", () => {
       referencePackages: CATALOG,
       statutoryRule: customRule,
     });
-    // 11,200 / 1.12 = 10,000 -> 25% = 2,500 discount + 1,200 VAT = 3,700 relief
-    expect(customRes.senior_pwd_savings).toBeCloseTo(3700, 2);
+    // 11,200 * 25% = 2,800 relief on VAT-exempt diagnostic service
+    expect(customRes.senior_pwd_savings).toBeCloseTo(2800, 2);
   });
 
   it("4. Classifies fully covered lines as green ('covered') with zero flags", () => {
@@ -755,11 +755,11 @@ describe("Versioned packages & Multi-page OCR merge", () => {
       statutoryDiscountType: "pwd",
       referencePackages: CATALOG,
     });
-    // Item 1 (500 VAT-exempt): 20% discount = 100
-    // Item 2 (5600 VAT-inclusive): 5600 / 1.12 = 5000 (600 VAT) + 1000 (20% discount) = 1600
-    // Total statutory savings = 100 + 1600 = 1700 -> Fair OOP = 6100 - 1700 = 4400
-    expect(audit.senior_pwd_savings).toBeCloseTo(1700, 2);
-    expect(audit.fair_out_of_pocket).toBeCloseTo(4400, 2);
+    // Item 1 (500 VAT-exempt drug): 20% discount = 100
+    // Item 2 (5600 Room & Board — VAT-exempt hospital service under NIRC Sec. 109(G)): 20% discount = 1120
+    // Total statutory savings = 100 + 1120 = 1220 -> Fair OOP = 6100 - 1220 = 4880
+    expect(audit.senior_pwd_savings).toBeCloseTo(1220, 2);
+    expect(audit.fair_out_of_pocket).toBeCloseTo(4880, 2);
   });
 
   it("selects statutory_rules by the bill's statement/discharge date and consolidates Gemini model fallbacks", () => {
@@ -823,7 +823,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
       statutoryRules: rules,
       referencePackages: CATALOG,
     });
-    expect(res2024.senior_pwd_savings).toBeCloseTo(3200, 2);
+    expect(res2024.senior_pwd_savings).toBeCloseTo(2240, 2);
 
     const res2026 = runAuditEngine(
       { ...bill2024, discharge_date: "2026-03-10" },
@@ -834,7 +834,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
         referencePackages: CATALOG,
       }
     );
-    expect(res2026.senior_pwd_savings).toBeCloseTo(3700, 2);
+    expect(res2026.senior_pwd_savings).toBeCloseTo(2800, 2);
 
     const fallbackModels = getGeminiModelFallbackList("gemini-custom-test");
     expect(fallbackModels[0]).toBe("gemini-custom-test");
@@ -943,5 +943,178 @@ describe("Versioned packages & Multi-page OCR merge", () => {
           f.title.includes("Private Room Co-Payment Applies")
       )
     ).toBe(true);
+  });
+
+  it("audits MCU-FDT Senior Citizen SOA #2023-750454 with 8/8 eligible items, two-tier NIRC Sec. 109(G) VAT rules, ₱1,240 credit reconciliation, and ₱39,562.17 reconciled balance", () => {
+    const rawMcuSoa = sanitizeExtractedBill({
+      hospital_name: "MCU-FDT Medical Foundation Inc.",
+      patient_name: "Escario, Amparo Arellano",
+      statement_number: "2023-750454",
+      admission_date: "2023-04-28",
+      case_rate_codes_detected: [],
+      is_senior_or_pwd: true,
+      statutory_discount_type: "senior",
+      line_items: [
+        {
+          id: "raw-1",
+          description: "X-Ray",
+          category: "Laboratory/Diagnostics",
+          quantity: 1,
+          unit_price: 1942.0,
+          total_amount: 1942.0,
+        },
+        {
+          id: "raw-2",
+          description: "Central Supply Room",
+          category: "Medical Supplies",
+          quantity: 1,
+          unit_price: 1942.0,
+          total_amount: 1942.0,
+        },
+        {
+          id: "raw-3",
+          description: "Pharmacy - Main",
+          category: "Drugs/Medicines",
+          quantity: 1,
+          unit_price: 2583.34,
+          total_amount: 2583.34,
+        },
+        {
+          id: "raw-4",
+          description: "Emergency Room",
+          // Simulate OCR returning Miscellaneous to verify automatic ROOM_AND_ER rescue
+          category: "Miscellaneous",
+          quantity: 1,
+          unit_price: 25193.96,
+          total_amount: 25193.96,
+        },
+        {
+          id: "raw-5",
+          description: "Dept of Clinical Laboratories",
+          category: "Laboratory/Diagnostics",
+          quantity: 1,
+          unit_price: 14163.68,
+          total_amount: 14163.68,
+        },
+        {
+          id: "raw-6",
+          description: "Pulmonary Section",
+          category: "Laboratory/Diagnostics",
+          quantity: 1,
+          unit_price: 2383.06,
+          total_amount: 2383.06,
+        },
+        {
+          id: "raw-7",
+          description: "CT - Scan",
+          category: "Laboratory/Diagnostics",
+          quantity: 1,
+          unit_price: 6200.0,
+          total_amount: 6200.0,
+        },
+        {
+          id: "raw-8",
+          description: "Professional Fee",
+          category: "Professional Fees",
+          quantity: 1,
+          unit_price: 2666.67,
+          total_amount: 2666.67,
+        },
+        // Simulate PAYMENT/CN credit rows accidentally included by OCR
+        {
+          id: "raw-credit-1",
+          description: "Senior Citizen Discount",
+          category: "Miscellaneous",
+          quantity: 1,
+          unit_price: 1240.0,
+          total_amount: 1240.0,
+        },
+        {
+          id: "raw-credit-2",
+          description: "Payment",
+          category: "Miscellaneous",
+          quantity: 1,
+          unit_price: 4960.0,
+          total_amount: 4960.0,
+        },
+      ],
+      gross_total: 56325.0,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 1240.0,
+      net_balance_due: 50125.5,
+    });
+
+    // Credit rows must be stripped out of chargeable line_items and folded into totals
+    expect(rawMcuSoa.line_items).toHaveLength(8);
+    expect(rawMcuSoa.senior_pwd_discount_total).toBe(1240.0);
+    expect(rawMcuSoa.cash_or_hmo_payments_total).toBe(4960.0);
+
+    // Emergency Room must be mapped to Room & Board (never Miscellaneous)
+    const erItem = rawMcuSoa.line_items.find(
+      (i) => i.description === "Emergency Room"
+    );
+    expect(erItem?.category).toBe("Room & Board");
+
+    const audit = runAuditEngine(rawMcuSoa, {
+      auditId: "b91f6dc2-280",
+      statutoryDiscountType: "senior",
+      referencePackages: CATALOG,
+    });
+
+    // 1. All 8 line items classified & audited (0 Out-of-Pocket skipped)
+    expect(audit.line_items).toHaveLength(8);
+    expect(
+      audit.line_items.filter((i) => i.status === "out_of_pocket")
+    ).toHaveLength(0);
+    expect(
+      audit.line_items.filter((i) => i.status === "review_worthy")
+    ).toHaveLength(8);
+
+    // 2. Central Supply Room (₱1,942.00) & Pharmacy - Main (₱2,583.34) compute 12% VAT removal + 20% SC discount
+    const csr = audit.line_items.find(
+      (i) => i.description === "Central Supply Room"
+    );
+    const pharmacy = audit.line_items.find(
+      (i) => i.description === "Pharmacy - Main"
+    );
+    expect(csr?.vat_treatment).toBe("vat_inclusive_goods");
+    expect(csr?.suggested_deduction).toBeCloseTo(554.86, 2);
+    expect(pharmacy?.vat_treatment).toBe("vat_inclusive_goods");
+    expect(pharmacy?.suggested_deduction).toBeCloseTo(738.1, 2);
+
+    // 3. Emergency Room, diagnostics, and Professional Fee compute straight 20% SC discount (NIRC Sec. 109(G))
+    const xray = audit.line_items.find((i) => i.description === "X-Ray");
+    const er = audit.line_items.find((i) => i.description === "Emergency Room");
+    const labs = audit.line_items.find(
+      (i) => i.description === "Dept of Clinical Laboratories"
+    );
+    const pulm = audit.line_items.find(
+      (i) => i.description === "Pulmonary Section"
+    );
+    const ct = audit.line_items.find((i) => i.description === "CT - Scan");
+    const pf = audit.line_items.find(
+      (i) => i.description === "Professional Fee"
+    );
+
+    expect(xray?.suggested_deduction).toBeCloseTo(388.4, 2);
+    expect(er?.suggested_deduction).toBeCloseTo(5038.79, 2);
+    expect(labs?.suggested_deduction).toBeCloseTo(2832.74, 2);
+    expect(pulm?.suggested_deduction).toBeCloseTo(476.61, 2);
+    expect(ct?.suggested_deduction).toBeCloseTo(1240.0, 2);
+    expect(ct?.statutory_credit_applied).toBeCloseTo(1240.0, 2);
+    expect(pf?.suggested_deduction).toBeCloseTo(533.33, 2);
+
+    // 4. Existing ₱1,240.00 credit netted out + ₱0.50 SOA arithmetic discrepancy -> Reconciled Balance ₱39,562.17
+    expect(audit.statutory_reconciliation?.total_entitled).toBeCloseTo(
+      11802.83,
+      2
+    );
+    expect(audit.statutory_reconciliation?.already_credited).toBeCloseTo(
+      1240.0,
+      2
+    );
+    expect(audit.senior_pwd_savings).toBeCloseTo(10562.83, 2);
+    expect(audit.arithmetic_discrepancy).toBeCloseTo(0.5, 2);
+    expect(audit.fair_out_of_pocket).toBeCloseTo(39562.17, 2);
   });
 });

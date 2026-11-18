@@ -8,6 +8,8 @@ import { User as UserIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
+import { useScanBackground } from "@/components/providers/ScanBackgroundProvider";
+import { useChatbotBackground } from "@/components/providers/ChatbotBackgroundProvider";
 
 export function Header() {
   const pathname = usePathname();
@@ -19,13 +21,7 @@ export function Header() {
     supabase.auth
       .getSession()
       .then(({ data: { session } }) => {
-        if (session?.user) {
-          setUser(session.user);
-        } else {
-          return supabase.auth.getUser().then(({ data: { user: fetchedUser } }) => {
-            setUser(fetchedUser ?? null);
-          });
-        }
+        setUser(session?.user ?? null);
       })
       .catch(() => {});
 
@@ -39,6 +35,10 @@ export function Header() {
       subscription.unsubscribe();
     };
   }, [pathname]);
+
+  const { isBusy: isScanning } = useScanBackground();
+  const { isStreaming: isChatStreaming, hasUnreadMessage } =
+    useChatbotBackground();
 
   const navLinks = [
     { label: "Home", href: "/" },
@@ -82,18 +82,34 @@ export function Header() {
               link.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(link.href);
+            const isScanningTab = link.href === "/scanner" && isScanning;
+            const isChatActive =
+              link.href === "/chatbot" && (isChatStreaming || hasUnreadMessage);
+
             return (
               <Link
                 key={link.href}
                 href={link.href}
                 className={cn(
-                  "px-3.5 py-1.5 text-xs font-bold rounded-full transition-all duration-150 whitespace-nowrap",
+                  "relative inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-full transition-all duration-150 whitespace-nowrap",
                   isActive
                     ? "bg-[#2563EB] text-white shadow-xs"
                     : "text-[#64748B] hover:text-[#1E293B] hover:bg-white/80"
                 )}
               >
-                {link.label}
+                <span>{link.label}</span>
+                {isScanningTab && (
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+                  </span>
+                )}
+                {isChatActive && (
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                  </span>
+                )}
               </Link>
             );
           })}
