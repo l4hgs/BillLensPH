@@ -14,6 +14,7 @@ import { useChatbotBackground } from "@/components/providers/ChatbotBackgroundPr
 export function Header() {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -22,6 +23,7 @@ export function Header() {
       .getSession()
       .then(({ data: { session } }) => {
         setUser(session?.user ?? null);
+        setAvatarError(false);
       })
       .catch(() => {});
 
@@ -29,6 +31,7 @@ export function Header() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setAvatarError(false);
     });
 
     return () => {
@@ -49,34 +52,26 @@ export function Header() {
   ];
 
   return (
-    <header className="no-print print:hidden sticky top-0 z-40 bg-white border-b border-[#CBD5E1] px-4 sm:px-6 py-2 transition-all">
-      <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
-        {/* Left branding with Mascot Logo (no gray background, larger size) */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="relative w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <Image
-                src="/logo.png"
-                alt="BillLens PH Logo"
-                width={48}
-                height={48}
-                className="object-contain w-auto h-full"
-                priority
-              />
-            </div>
-            <div className="flex items-baseline gap-1">
-              <span className="font-extrabold text-base sm:text-lg tracking-tight text-[#1E293B]">
-                BillLens
-              </span>
-              <span className="font-black text-xs sm:text-sm text-[#DC2626] tracking-wide">
-                PH
-              </span>
-            </div>
+    <header className="no-print print:hidden sticky top-0 z-40 bg-white/40 backdrop-blur-xl backdrop-saturate-150 border-b border-slate-200/50 py-2.5 transition-all shadow-[0_1px_3px_0_rgba(15,23,42,0.02)]">
+      <div className="w-full max-w-none px-4 sm:px-6 lg:px-10 xl:px-14 flex items-center justify-between gap-3">
+        {/* Left branding: Whole Official Logo Header (Minimized) */}
+        <div className="flex items-center shrink-0">
+          <Link href="/" className="flex items-center group">
+            <Image
+              src="/logo-header.png"
+              alt="BillLens PH"
+              width={125}
+              height={41}
+              className="h-6 sm:h-7 w-auto object-contain group-hover:scale-[1.02] transition-transform"
+              style={{ width: "auto", height: "auto" }}
+              priority
+            />
+            <span className="sr-only">BillLens PH</span>
           </Link>
         </div>
 
-        {/* Desktop Navigation Links */}
-        <nav className="desktop-only-nav items-center gap-1 bg-[#F3F4F6] p-1 rounded-full border border-[#CBD5E1]">
+        {/* Desktop Navigation Links - Circular / Pill Container */}
+        <nav className="desktop-only-nav items-center gap-1 bg-white/30 backdrop-blur-md p-1 rounded-full border border-slate-200/60 shadow-[inset_0_1px_2px_rgba(15,23,42,0.02)]">
           {navLinks.map((link) => {
             const isActive =
               link.href === "/"
@@ -91,10 +86,10 @@ export function Header() {
                 key={link.href}
                 href={link.href}
                 className={cn(
-                  "relative inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-full transition-all duration-150 whitespace-nowrap",
+                  "relative inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all duration-200 whitespace-nowrap",
                   isActive
-                    ? "bg-[#2563EB] text-white shadow-xs"
-                    : "text-[#64748B] hover:text-[#1E293B] hover:bg-white/80"
+                    ? "bg-[#0F172A] text-white shadow-xs ring-1 ring-slate-900/10"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
                 )}
               >
                 <span>{link.label}</span>
@@ -115,28 +110,67 @@ export function Header() {
           })}
         </nav>
 
-        {/* Right action icons */}
+        {/* Right action icons & profile */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {user ? (
-            <Link
-              href="/auth"
-              className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-white border border-slate-200 text-slate-800 text-xs font-bold hover:border-blue-300 hover:bg-slate-50 transition-colors whitespace-nowrap shadow-xs"
-              title={user.email || "User profile"}
-            >
-              <span className="w-6 h-6 rounded-full bg-[#2563EB] text-white flex items-center justify-center text-[11px] font-bold shrink-0">
-                {user.email ? user.email.charAt(0).toUpperCase() : "U"}
-              </span>
-              <span className="hidden sm:inline max-w-[120px] truncate">
-                {user.user_metadata?.full_name || user.email?.split("@")[0]}
-              </span>
-            </Link>
+            (() => {
+              const avatarUrl =
+                (user.user_metadata?.avatar_url as string | undefined) ||
+                (user.user_metadata?.picture as string | undefined) ||
+                null;
+              const displayName =
+                (user.user_metadata?.full_name as string | undefined) ||
+                (user.user_metadata?.name as string | undefined) ||
+                user.email?.split("@")[0] ||
+                "Profile";
+
+              return (
+                <Link
+                  href="/auth"
+                  className="inline-flex items-center gap-2 p-1 sm:pl-1.5 sm:pr-3.5 sm:py-1 rounded-full bg-white/40 backdrop-blur-md border border-slate-200/60 hover:border-slate-300 hover:bg-white/70 text-slate-800 transition-all duration-200 shadow-[0_1px_2px_rgba(15,23,42,0.02)] hover:shadow-xs group"
+                  title={user.email || "User profile"}
+                >
+                  {avatarUrl && !avatarError ? (
+                    <div className="relative shrink-0">
+                      <img
+                        src={avatarUrl}
+                        alt={displayName}
+                        referrerPolicy="no-referrer"
+                        onError={() => setAvatarError(true)}
+                        className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200/80 shadow-2xs"
+                      />
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" />
+                    </div>
+                  ) : (
+                    <div className="relative shrink-0">
+                      <span className="w-7 h-7 rounded-full bg-[#0F172A] text-white flex items-center justify-center font-bold text-xs ring-1 ring-slate-200/80 shadow-2xs">
+                        {displayName.charAt(0).toUpperCase() || (
+                          <UserIcon className="w-3.5 h-3.5" />
+                        )}
+                      </span>
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" />
+                    </div>
+                  )}
+                  <div className="hidden sm:flex flex-col text-left leading-none">
+                    <span className="text-xs font-semibold text-slate-800 group-hover:text-slate-900 max-w-[120px] truncate tracking-[-0.01em]">
+                      {displayName}
+                    </span>
+                    <span className="text-[10px] font-medium text-slate-400 mt-0.5 tracking-tight">
+                      Account
+                    </span>
+                  </div>
+                </Link>
+              );
+            })()
           ) : (
             <Link
               href="/auth"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#2563EB] text-white text-xs font-bold shadow-xs hover:bg-[#1D4ED8] transition-colors whitespace-nowrap"
+              className="inline-flex items-center gap-2 pl-2 pr-3.5 py-1.5 rounded-full bg-[#0F172A]/90 hover:bg-[#0F172A] backdrop-blur-sm text-white text-xs font-semibold shadow-xs hover:shadow transition-all duration-200 border border-slate-900/80 group"
               title="Sign in"
             >
-              <UserIcon className="w-3.5 h-3.5" />
+              <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                <UserIcon className="w-3 h-3 text-white" />
+              </span>
               <span>Sign In</span>
             </Link>
           )}

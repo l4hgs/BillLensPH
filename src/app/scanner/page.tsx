@@ -4,16 +4,10 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Image as ImageIcon,
-  Camera,
-  SlidersHorizontal,
-  ShieldCheck,
   ArrowRight,
   AlertCircle,
   RotateCcw,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ScannerViewfinder } from "@/components/scanner/ScannerViewfinder";
 import { StatementStagingCard } from "@/components/scanner/StatementStagingCard";
 import { useScanBackground } from "@/components/providers/ScanBackgroundProvider";
@@ -308,7 +302,7 @@ export default function ScannerPage() {
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6">
+    <div className="w-full max-w-none space-y-6">
       {/* Hidden File Inputs */}
       <input
         ref={cameraInputRef}
@@ -337,17 +331,17 @@ export default function ScannerPage() {
         }}
       />
 
-      {/* Redesigned Header - Clean, No Card Background */}
-      <div className="pt-1 pb-1 sm:pt-2 sm:pb-2">
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+      {/* Editorial Header - Clean typographic hierarchy, compassionate value prop */}
+      <div className="space-y-1.5 border-b border-slate-200/80 pb-5 sm:pb-6">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
           Scan Statement
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1">
+        <p className="text-xs sm:text-sm text-slate-500 max-w-2xl leading-relaxed">
           Upload or capture your Itemized Statement (ISA) for automated case rate and statutory deduction auditing.
         </p>
       </div>
 
-      {/* Main Upload Card with Dropzone & File Rows */}
+      {/* Main Upload Dropzone & Staged Pages */}
       <ScannerViewfinder
         pages={pages}
         activePageIndex={activePageIndex}
@@ -360,7 +354,9 @@ export default function ScannerPage() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onBrowseFiles={() => fileInputRef.current?.click()}
+        onTakePhoto={() => cameraInputRef.current?.click()}
         onRemovePage={handleRemovePage}
+        isAuditComplete={Boolean(ocrAuditResult ?? scanState.completedResult)}
       />
 
       {/* Error Alert Banner */}
@@ -427,69 +423,6 @@ export default function ScannerPage() {
         isAnalyzingOcr={isBusy}
         ocrAuditResult={ocrAuditResult ?? scanState.completedResult}
       />
-
-      {/* Action Buttons Row: Primary & Secondary Pills */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-        <button
-          type="button"
-          disabled={isBusy}
-          onClick={() => cameraInputRef.current?.click()}
-          className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-[#2563EB] text-white text-xs sm:text-sm font-bold shadow-soft hover:bg-[#1D4ED8] transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
-        >
-          <Camera className="w-4 h-4" />
-          <span>Take Photo</span>
-        </button>
-
-        <button
-          type="button"
-          disabled={isBusy}
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-slate-200 text-slate-800 text-xs sm:text-sm font-bold shadow-soft hover:bg-slate-50 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
-        >
-          <ImageIcon className="w-4 h-4 text-blue-600" />
-          <span>Upload Photo / PDF</span>
-        </button>
-
-        <Link href="/rates" className="w-full">
-          <div className="w-full h-12 flex items-center justify-center gap-2 px-5 rounded-full bg-white border border-slate-200 text-slate-800 text-xs sm:text-sm font-bold shadow-soft hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.98]">
-            <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-            <span>Versioned PhilHealth ACR</span>
-          </div>
-        </Link>
-      </div>
-
-      {/* PhilHealth Rate Audit Status Card */}
-      <Card className="hover:border-blue-300 transition-all cursor-pointer bg-white border-slate-200/80 rounded-2xl shadow-soft">
-        <Link href="/rates">
-          <CardContent className="p-4 sm:p-5 flex items-center justify-between">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm sm:text-base text-[#1E293B]">
-                    PhilHealth Rate Audit
-                  </h4>
-                  <Badge
-                    variant="primary"
-                    className="text-[10px] py-0 px-2 bg-blue-50 text-[#2563EB] border-blue-200 font-bold"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                <p className="text-xs text-[#64748B] mt-0.5 truncate max-w-[200px] sm:max-w-md">
-                  Detect overcharges and unapplied case rate bundles
-                </p>
-              </div>
-            </div>
-
-            <div className="w-9 h-9 rounded-full bg-[#2563EB] text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
-              <ArrowRight className="w-4 h-4" />
-            </div>
-          </CardContent>
-        </Link>
-      </Card>
     </div>
   );
 }

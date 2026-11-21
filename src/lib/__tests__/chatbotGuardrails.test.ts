@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAuditContextBlock,
   buildSystemPrompt,
-} from "@/app/api/audit/chat/route";
+} from "@/lib/chatbotPrompt";
 import type { AuditEngineResult } from "@/types/audit";
 
 describe("AI Chatbot Guardrails & Personality (Billy)", () => {

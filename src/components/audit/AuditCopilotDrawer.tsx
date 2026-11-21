@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { createPortal } from "react-dom";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   AlertCircle,
   AlertTriangle,
-  Bot,
   Building2,
   FileText,
   Loader2,
@@ -15,7 +15,6 @@ import {
   Send,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
   Square,
   Trash2,
   User,
@@ -353,21 +352,39 @@ export function AuditCopilotDrawer({
 
   return (
     <>
-      {/* Floating Ask Chatbot Button inside Audit Studio */}
-      <div className="no-print print:hidden fixed bottom-24 right-4 z-40 md:bottom-8 md:right-8">
+      {/* Responsive Floating Billy Button with Blue Background & Butter-Smooth CSS Grid Expand */}
+      <div className="no-print print:hidden fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40">
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          aria-label="Open AI Health & Subsidy Chatbot"
-          className="group flex cursor-pointer items-center gap-2.5 rounded-full border border-[#1D4ED8] bg-[#2563EB] px-4 py-3 text-xs font-bold text-white shadow-lg transition-all duration-200 hover:bg-[#1D4ED8] active:scale-[0.98] whitespace-nowrap"
+          aria-label="Ask Billy AI Assistant"
+          className="group relative flex cursor-pointer items-center rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] h-12 sm:h-13 text-white shadow-xl shadow-blue-600/35 ring-2 ring-white/25 transition-colors duration-200 active:scale-95"
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15">
-            <Sparkles className="h-3.5 w-3.5 text-white" />
-          </span>
-          <span>Ask Chatbot</span>
+          {/* Static Anchor Icon - perfectly centered in the 48px/52px circle */}
+          <div className="flex h-12 w-12 sm:h-13 sm:w-13 items-center justify-center shrink-0">
+            <Image
+              src="/billy-white.png"
+              alt="Billy"
+              width={24}
+              height={24}
+              className="w-5 h-5 sm:w-5.5 sm:h-5.5 object-contain transition-transform duration-200 group-hover:scale-105 drop-shadow-xs"
+              style={{ width: "auto", height: "auto" }}
+            />
+          </div>
+
+          {/* Fractional Grid Width Container: 0fr -> 1fr on hover (smooth bidirectional expansion & collapse) */}
+          <div className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-out">
+            <div className="overflow-hidden whitespace-nowrap">
+              <span className="block pr-4 sm:pr-4.5 pl-0.5 text-xs sm:text-sm font-bold tracking-tight text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 group-hover:delay-100">
+                Ask Billy
+              </span>
+            </div>
+          </div>
+
+          {/* Minimal Status / Unbundled items count badge */}
           {yellowCount > 0 && (
-            <span className="rounded-full bg-[#1E293B] px-2 py-0.5 text-[10px] font-extrabold text-white">
-              {yellowCount} flagged
+            <span className="absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 flex items-center justify-center min-w-[19px] h-[19px] px-1 rounded-full bg-[#0F172A] text-[10px] font-black text-white shadow-md ring-2 ring-white leading-none tabular-nums z-10">
+              {yellowCount}
             </span>
           )}
         </button>
@@ -392,8 +409,15 @@ export function AuditCopilotDrawer({
               {/* Clean Light Header matching AI Chatbot Page */}
               <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white px-4 py-3 sm:px-5">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-200/80 bg-blue-50 text-blue-600 shadow-2xs">
-                    <Bot className="h-4 w-4" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-200/80 bg-blue-50/70 p-1 shadow-2xs">
+                    <Image
+                      src="/billy.png"
+                      alt="Billy Logo"
+                      width={28}
+                      height={28}
+                      className="w-6 h-6 object-contain"
+                      style={{ width: "auto", height: "auto" }}
+                    />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -409,7 +433,7 @@ export function AuditCopilotDrawer({
                     </div>
                     <p className="line-clamp-1 text-[11px] text-slate-500">
                       {auditResult.hospital_name} ·{" "}
-                      {formatPHP(auditResult.gross_total)}
+                      <span className="font-mono tabular-nums">{formatPHP(auditResult.gross_total)}</span>
                     </p>
                   </div>
                 </div>
@@ -428,17 +452,22 @@ export function AuditCopilotDrawer({
               <div
                 ref={scrollContainerRef}
                 className={cn(
-                  "flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 scroll-smooth",
-                  messages.length === 0
-                    ? "flex flex-col items-center justify-center"
-                    : "space-y-3.5"
+                  "flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-5 scroll-smooth",
+                  messages.length === 0 ? "flex flex-col" : "space-y-3.5"
                 )}
               >
                 {/* Empty State matching AI Chatbot Page */}
                 {messages.length === 0 && (
-                  <div className="w-full mx-auto flex flex-col items-center text-center space-y-4 py-2 transition-opacity duration-150">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-600 shadow-soft">
-                      <Bot className="w-6 h-6" />
+                  <div className="w-full mx-auto my-auto flex flex-col items-center text-center space-y-3 sm:space-y-4 py-1 sm:py-2 transition-opacity duration-150">
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <Image
+                        src="/billy.png"
+                        alt="Billy Logo"
+                        width={64}
+                        height={64}
+                        className="w-14 h-14 sm:w-16 sm:h-16 object-contain drop-shadow-sm hover:scale-105 transition-transform"
+                        style={{ width: "auto", height: "auto" }}
+                      />
                     </div>
 
                     <div className="space-y-1">
@@ -508,13 +537,20 @@ export function AuditCopilotDrawer({
                           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
                           isUser
                             ? "bg-[#1E293B] text-white"
-                            : "bg-[#2563EB] text-white"
+                            : "bg-blue-50 border border-blue-200/80 p-0.5 shadow-2xs"
                         )}
                       >
                         {isUser ? (
                           <User className="h-3.5 w-3.5" />
                         ) : (
-                          <Bot className="h-3.5 w-3.5" />
+                          <Image
+                            src="/billy.png"
+                            alt="Billy"
+                            width={20}
+                            height={20}
+                            className="w-4 h-4 object-contain"
+                            style={{ width: "auto", height: "auto" }}
+                          />
                         )}
                       </div>
 
@@ -542,8 +578,15 @@ export function AuditCopilotDrawer({
                 {/* Loading indicator when request is submitted before first assistant chunk */}
                 {status === "submitted" && (
                   <div className="flex items-start gap-2.5">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2563EB] text-white">
-                      <Bot className="h-3.5 w-3.5" />
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 border border-blue-200/80 p-0.5 shadow-2xs">
+                      <Image
+                        src="/billy.png"
+                        alt="Billy"
+                        width={20}
+                        height={20}
+                        className="w-4 h-4 object-contain"
+                        style={{ width: "auto", height: "auto" }}
+                      />
                     </div>
                     <div className="rounded-2xl rounded-tl-sm border border-[#CBD5E1] bg-[#F3F4F6] px-3.5 py-2.5 text-xs text-[#64748B]">
                       <span className="inline-flex items-center gap-2">

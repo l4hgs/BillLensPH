@@ -48,18 +48,18 @@ export function AuditLineItemRow({
             )}
           </div>
           <p className="text-xs text-slate-600">
-            {item.category} · {item.quantity} × {formatPHP(item.unit_price)}
+            {item.category} · <span className="font-mono tabular-nums">{item.quantity}</span> × <span className="font-mono tabular-nums">{formatPHP(item.unit_price)}</span>
           </p>
         </div>
 
         <div className="shrink-0 space-y-1.5 text-right">
           <div>
             {totalChanged && original && (
-              <span className="block text-[11px] text-slate-500 line-through">
+              <span className="block text-[11px] text-slate-500 line-through font-mono tabular-nums">
                 {formatPHP(original.total_amount)}
               </span>
             )}
-            <span className="block text-sm font-black text-slate-900">
+            <span className="block text-sm font-black text-slate-900 font-mono tabular-nums">
               {formatPHP(item.total_amount)}
             </span>
           </div>
@@ -77,7 +77,7 @@ export function AuditLineItemRow({
           {item.flag_reason}
           {item.suggested_deduction ? (
             <span className="mt-1 block font-bold">
-              Potential savings: {formatPHP(item.suggested_deduction)}
+              Potential savings: <span className="font-mono tabular-nums">{formatPHP(item.suggested_deduction)}</span>
             </span>
           ) : null}
         </p>

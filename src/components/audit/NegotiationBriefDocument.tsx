@@ -301,7 +301,7 @@ export function NegotiationBriefDocument({
             <span className="font-semibold text-[#64748B]">
               Statement / SOA #:{" "}
             </span>
-            <span className="font-bold text-[#1E293B]">
+            <span className="font-bold text-[#1E293B] font-mono">
               {audit.statement_number || "Per Attached ISA"}
             </span>
           </p>
@@ -310,7 +310,7 @@ export function NegotiationBriefDocument({
               <span className="font-semibold text-[#64748B]">
                 Confinement Period:{" "}
               </span>
-              <span className="font-semibold text-[#1E293B]">
+              <span className="font-semibold text-[#1E293B] font-mono tabular-nums">
                 {admissionDate || "—"} to {dischargeDate || "Present"}
               </span>
             </p>
@@ -358,10 +358,10 @@ export function NegotiationBriefDocument({
             <span className="block text-[10px] font-bold uppercase text-[#64748B]">
               Gross Billed
             </span>
-            <span className="mt-0.5 block text-sm font-black text-[#1E293B] sm:text-base">
+            <span className="mt-0.5 block text-sm font-black text-[#1E293B] sm:text-base font-mono tabular-nums">
               {formatPHP(audit.gross_total)}
             </span>
-            <span className="text-[10px] text-[#64748B]">
+            <span className="text-[10px] text-[#64748B] tabular-nums">
               {audit.line_items.length} line items
             </span>
           </div>
@@ -370,7 +370,7 @@ export function NegotiationBriefDocument({
             <span className="block text-[10px] font-bold uppercase text-[#64748B]">
               PhilHealth Benefit
             </span>
-            <span className="mt-0.5 block text-sm font-black text-[#2563EB] sm:text-base">
+            <span className="mt-0.5 block text-sm font-black text-[#2563EB] sm:text-base font-mono tabular-nums">
               {formatPHP(audit.philhealth_coverage_total)}
             </span>
             <span className="text-[10px] text-[#64748B]">
@@ -384,10 +384,10 @@ export function NegotiationBriefDocument({
             <span className="block text-[10px] font-bold uppercase text-amber-800">
               Requested Adjustment
             </span>
-            <span className="mt-0.5 block text-sm font-black text-amber-900 sm:text-base">
+            <span className="mt-0.5 block text-sm font-black text-amber-900 sm:text-base font-mono tabular-nums">
               {formatPHP(potentialSavings)}
             </span>
-            <span className="text-[10px] text-amber-800">
+            <span className="text-[10px] text-amber-800 tabular-nums">
               {reviewItems.length} flagged item
               {reviewItems.length === 1 ? "" : "s"}
             </span>
@@ -397,11 +397,11 @@ export function NegotiationBriefDocument({
             <span className="block text-[10px] font-bold uppercase text-emerald-800">
               Reconciled Balance
             </span>
-            <span className="mt-0.5 block text-sm font-black text-emerald-900 sm:text-base">
+            <span className="mt-0.5 block text-sm font-black text-emerald-900 sm:text-base font-mono tabular-nums">
               {formatPHP(audit.fair_out_of_pocket)}
             </span>
             <span className="text-[10px] text-emerald-800">
-              vs. {formatPHP(audit.actual_out_of_pocket)} stated
+              vs. <span className="font-mono tabular-nums">{formatPHP(audit.actual_out_of_pocket)}</span> stated
             </span>
           </div>
         </div>
@@ -425,15 +425,15 @@ export function NegotiationBriefDocument({
                   </span>
                   <span className="text-[#64748B]">
                     HCI Fee:{" "}
-                    <strong className="text-[#1E293B]">
+                    <strong className="text-[#1E293B] font-mono tabular-nums">
                       {formatPHP(pkg.hci_fee)}
                     </strong>{" "}
                     · Doctor PF Share:{" "}
-                    <strong className="text-[#1E293B]">
+                    <strong className="text-[#1E293B] font-mono tabular-nums">
                       {formatPHP(pkg.prof_fee)}
                     </strong>{" "}
                     · Total Case Rate:{" "}
-                    <strong className="text-[#2563EB]">
+                    <strong className="text-[#2563EB] font-mono tabular-nums">
                       {formatPHP(pkg.total_rate)}
                     </strong>
                   </span>
@@ -501,7 +501,7 @@ export function NegotiationBriefDocument({
                           {item.description}
                         </p>
                         <p className="mt-0.5 text-[11px] text-[#64748B]">
-                          Qty: {item.quantity} × {formatPHP(item.unit_price)}
+                          Qty: <span className="font-mono tabular-nums">{item.quantity}</span> × <span className="font-mono tabular-nums">{formatPHP(item.unit_price)}</span>
                           {item.matched_package_code
                             ? ` · Matched Package ${item.matched_package_code}`
                             : ""}
@@ -517,12 +517,12 @@ export function NegotiationBriefDocument({
                     <td className="px-3 py-2.5 text-[11px] font-medium text-[#64748B] whitespace-nowrap">
                       <div className="print-avoid-break">{item.category}</div>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono font-semibold text-[#1E293B] whitespace-nowrap">
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums font-semibold text-[#1E293B] whitespace-nowrap">
                       <div className="print-avoid-break">
                         {formatPHP(item.total_amount)}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-amber-900 whitespace-nowrap">
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold text-amber-900 whitespace-nowrap">
                       <div className="print-avoid-break">
                         {item.suggested_deduction &&
                         item.suggested_deduction > 0
@@ -548,7 +548,7 @@ export function NegotiationBriefDocument({
                         Total Statutory Discount Entitled (
                         {isPwd ? "RA 10754" : "RA 9994"} / NIRC Sec. 109(G)):
                       </span>
-                      <span className="font-mono font-semibold text-[#1E293B] whitespace-nowrap">
+                      <span className="font-mono tabular-nums font-semibold text-[#1E293B] whitespace-nowrap">
                         -{formatPHP(totalStatutoryEntitled)}
                       </span>
                     </div>
@@ -557,7 +557,7 @@ export function NegotiationBriefDocument({
                       <span className="font-semibold text-[#475569]">
                         Less: Senior/PWD Discount Already Credited on SOA:
                       </span>
-                      <span className="font-mono font-semibold text-[#475569] whitespace-nowrap">
+                      <span className="font-mono tabular-nums font-semibold text-[#475569] whitespace-nowrap">
                         {alreadyCreditedStatutory > 0
                           ? `+${formatPHP(alreadyCreditedStatutory)}`
                           : formatPHP(0)}
@@ -568,7 +568,7 @@ export function NegotiationBriefDocument({
                       <span className="font-bold text-[#1E293B]">
                         Net Additional Statutory Adjustment Requested:
                       </span>
-                      <span className="font-mono font-bold text-amber-900 whitespace-nowrap">
+                      <span className="font-mono tabular-nums font-bold text-amber-900 whitespace-nowrap">
                         -{formatPHP(audit.senior_pwd_savings)}
                       </span>
                     </div>
@@ -580,7 +580,7 @@ export function NegotiationBriefDocument({
                     <span className="font-semibold text-[#475569]">
                       Unbundled PhilHealth Case Rate Inclusions Flagged:
                     </span>
-                    <span className="font-mono font-semibold text-amber-900 whitespace-nowrap">
+                    <span className="font-mono tabular-nums font-semibold text-amber-900 whitespace-nowrap">
                       -{formatPHP(audit.disputed_overcharge_total)}
                     </span>
                   </div>
@@ -591,7 +591,7 @@ export function NegotiationBriefDocument({
                     <span className="font-semibold text-[#475569]">
                       Under-Deducted PhilHealth Case Rate Shortfall:
                     </span>
-                    <span className="font-mono font-semibold text-amber-900 whitespace-nowrap">
+                    <span className="font-mono tabular-nums font-semibold text-amber-900 whitespace-nowrap">
                       -{formatPHP(audit.case_rate_shortfall ?? 0)}
                     </span>
                   </div>
@@ -602,7 +602,7 @@ export function NegotiationBriefDocument({
                     <span className="font-semibold text-[#475569]">
                       SOA Arithmetic / Rounding Adjustment:
                     </span>
-                    <span className="font-mono font-semibold text-amber-900 whitespace-nowrap">
+                    <span className="font-mono tabular-nums font-semibold text-amber-900 whitespace-nowrap">
                       -{formatPHP(Math.abs(audit.arithmetic_discrepancy ?? 0))}
                     </span>
                   </div>
@@ -611,12 +611,14 @@ export function NegotiationBriefDocument({
                 <div className="flex items-center justify-between gap-4 border-t border-[#CBD5E1] pt-1.5 font-bold text-[#1E293B]">
                   <span>
                     Total Requested Billing &amp; Statutory Adjustments (Billed:{" "}
-                    {formatPHP(
-                      reviewItems.reduce((sum, i) => sum + i.total_amount, 0)
-                    )}
+                    <span className="font-mono tabular-nums">
+                      {formatPHP(
+                        reviewItems.reduce((sum, i) => sum + i.total_amount, 0)
+                      )}
+                    </span>
                     ):
                   </span>
-                  <span className="font-mono text-amber-900 whitespace-nowrap">
+                  <span className="font-mono tabular-nums text-amber-900 whitespace-nowrap">
                     -{formatPHP(potentialSavings)}
                   </span>
                 </div>
@@ -625,7 +627,7 @@ export function NegotiationBriefDocument({
                   <span>
                     Reconciled Balance Due (Before PhilHealth Case Rate):
                   </span>
-                  <span className="font-mono text-sm whitespace-nowrap">
+                  <span className="font-mono tabular-nums text-sm whitespace-nowrap">
                     {formatPHP(audit.fair_out_of_pocket)}
                   </span>
                 </div>

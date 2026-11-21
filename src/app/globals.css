@@ -1,9 +1,14 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-sans), "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-mono), "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 @layer base {
   :root {
     /* BillLens PH Design System Swatches */
-    --background: #F3F4F6;         /* Light Canvas */
+    --background: #F8FAFC;         /* Light Gray Canvas */
     --border: #CBD5E1;             /* Card stroke & dividers */
     --muted: #64748B;              /* Secondary / Muted labels */
     --foreground: #1E293B;         /* Charcoal Navy / Primary text */
@@ -27,14 +32,38 @@
     --status-out-of-pocket-bg: #FEF2F2;
     --status-out-of-pocket-text: #991B1B;
   }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sans);
+    letter-spacing: -0.03em;
+  }
 }
 
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Explicit font family and numeric utilities */
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.tracking-tight-display {
+  letter-spacing: -0.03em;
 }
 
 /* Safe area insets for mobile iOS / Android viewports */
@@ -59,8 +88,109 @@ body {
   box-shadow: 0 0 24px -2px rgba(37, 99, 235, 0.45);
 }
 
-/* Desktop vs Mobile display helpers */
-@media (min-width: 768px) {
+/* Liquid Glass Transfer & Surface-Tension Animations */
+@keyframes liquidDropletMorph {
+  0% {
+    transform: scale3d(1, 1, 1);
+  }
+  38% {
+    transform: scale3d(1.08, 0.91, 1);
+  }
+  72% {
+    transform: scale3d(0.98, 1.03, 1);
+  }
+  100% {
+    transform: scale3d(1, 1, 1);
+  }
+}
+
+@keyframes liquidSheenSweep {
+  0% {
+    transform: translateX(-120%) skewX(-20deg);
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(220%) skewX(-20deg);
+    opacity: 0;
+  }
+}
+
+@keyframes liquidStageReveal {
+  0% {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(14px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes contentSlideRight {
+  0% {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateX(-16px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateX(0);
+  }
+}
+
+@keyframes financialCardReveal {
+  0% {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateX(-16px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-liquid-droplet {
+  animation: liquidDropletMorph 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-liquid-sheen {
+  animation: liquidSheenSweep 850ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-liquid-stage {
+  animation: liquidStageReveal 580ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-content-1 {
+  animation: contentSlideRight 480ms cubic-bezier(0.22, 1, 0.36, 1) 40ms both;
+}
+
+.animate-content-2 {
+  animation: contentSlideRight 520ms cubic-bezier(0.22, 1, 0.36, 1) 110ms both;
+}
+
+.animate-content-3 {
+  animation: contentSlideRight 540ms cubic-bezier(0.22, 1, 0.36, 1) 180ms both;
+}
+
+.animate-content-4 {
+  animation: contentSlideRight 560ms cubic-bezier(0.22, 1, 0.36, 1) 240ms both;
+}
+
+.animate-financial-card {
+  animation: financialCardReveal 560ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+}
+
+/* Desktop vs Mobile & Tablet display helpers (Tablet < 1024px uses floating BottomNav) */
+@media (min-width: 1024px) {
   .mobile-only-bottom-nav {
     display: none !important;
   }
@@ -69,7 +199,7 @@ body {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .desktop-only-nav {
     display: none !important;
   }

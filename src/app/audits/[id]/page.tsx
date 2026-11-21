@@ -676,17 +676,17 @@ export default function AuditStudioPage({
 
       {/* Bill header */}
       <Card className="bg-white">
-        <CardContent className="space-y-3 p-5 md:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <Building2 className="h-5 w-5" />
+        <CardContent className="space-y-3 p-4 sm:p-5 md:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5 sm:gap-3">
+            <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
+              <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl bg-blue-50 text-blue-600">
+                <Building2 className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
               </div>
-              <div className="min-w-0">
-                <h1 className="text-lg font-bold leading-tight tracking-tight text-slate-900">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-base sm:text-lg font-bold leading-snug tracking-tight text-slate-900 break-words">
                   {result.hospital_name}
                 </h1>
-                <p className="mt-0.5 text-xs text-slate-600">
+                <p className="mt-0.5 text-[11px] sm:text-xs text-slate-600 leading-relaxed break-words">
                   {[
                     result.statement_number && `Statement #${result.statement_number}`,
                     result.patient_name,
@@ -698,7 +698,7 @@ export default function AuditStudioPage({
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
               {billImages.length > 0 && (
                 <Button
                   type="button"
@@ -1147,7 +1147,7 @@ export default function AuditStudioPage({
 
       {/* Compact Floating Save / Confirmation Status Pill */}
       {(isDirty || savedNotice || actionError) && (
-        <div className="sticky bottom-20 z-30 flex justify-center px-4 md:bottom-5 pointer-events-none">
+        <div className="sticky bottom-24 z-30 flex justify-center px-4 md:bottom-5 pointer-events-none">
           <div
             className="pointer-events-auto inline-flex flex-wrap items-center justify-between gap-3 rounded-full border border-slate-200/90 bg-white/95 px-4 py-2 shadow-lg backdrop-blur-md max-w-md"
             role="status"

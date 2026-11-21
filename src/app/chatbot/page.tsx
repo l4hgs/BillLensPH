@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
@@ -8,7 +9,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Bed,
-  Bot,
   Building2,
   ExternalLink,
   FileText,
@@ -139,28 +139,34 @@ export default function ChatbotPage() {
   }, [selectedAudit]);
 
   return (
-    <div className="w-full max-w-5xl mx-auto h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6rem)] flex flex-col bg-white border border-slate-200/80 rounded-2xl shadow-soft overflow-hidden">
+    <div className="w-full max-w-none h-[calc(100dvh-11rem)] sm:h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-6.5rem)] flex flex-col bg-white border border-slate-200/80 rounded-2xl shadow-soft overflow-hidden">
       {/* Messages Viewport - ONLY THIS SCROLLS */}
       <div
         ref={scrollContainerRef}
         className={cn(
-          "flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 scroll-smooth",
-          messages.length === 0
-            ? "flex flex-col items-center justify-center"
-            : "space-y-3.5"
+          "flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-5 scroll-smooth",
+          messages.length === 0 ? "flex flex-col" : "space-y-3.5"
         )}
       >
         {messages.length === 0 && (
-          <div className="w-full max-w-3xl mx-auto flex flex-col items-center text-center space-y-4 py-2 sm:py-3 transition-opacity duration-150">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-600 shadow-soft">
-              <Bot className="w-6 h-6" />
+          <div className="w-full max-w-3xl mx-auto my-auto flex flex-col items-center text-center space-y-3 sm:space-y-4 py-1 sm:py-3 transition-opacity duration-150">
+            <div className="relative flex items-center justify-center shrink-0">
+              <Image
+                src="/billy.png"
+                alt="Billy"
+                width={72}
+                height={72}
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-sm hover:scale-105 transition-transform"
+                style={{ width: "auto", height: "auto" }}
+                priority
+              />
             </div>
 
-            <div className="space-y-1">
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-900">
+            <div className="space-y-1 px-1">
+              <h2 className="text-sm sm:text-lg font-bold tracking-tight text-slate-900">
                 Kumusta! I’m Billy, your hospital billing assistant.
               </h2>
-              <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
+              <p className="text-[11px] sm:text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
                 {selectedAudit?.audit_results
                   ? `Statement from ${selectedAudit.hospital_name} (${formatPHP(
                       selectedAudit.audit_results.gross_total
@@ -169,30 +175,35 @@ export default function ChatbotPage() {
               </p>
             </div>
 
-            {/* Horizontal Options Grid (Left to Right) */}
-            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 pt-2 text-left">
+            {/* Responsive Options Grid: Compact horizontal rows on mobile, 3-col cards on desktop */}
+            <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-1 sm:pt-2 text-left">
               {commonQuestions.map((q, idx) => (
                 <button
                   key={idx}
                   type="button"
                   disabled={isStreaming}
                   onClick={() => handleSendQuery(q.prompt)}
-                  className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white hover:bg-blue-50/40 p-3.5 sm:p-4 text-left shadow-2xs transition-all hover:border-blue-400 hover:shadow-soft active:scale-[0.99] disabled:opacity-50 cursor-pointer min-h-[120px]"
+                  className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white hover:bg-blue-50/40 p-3 sm:p-4 text-left shadow-2xs transition-all hover:border-blue-400 hover:shadow-soft active:scale-[0.99] disabled:opacity-50 cursor-pointer sm:min-h-[120px]"
                 >
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
+                  <div className="flex sm:flex-col items-start sm:items-stretch gap-2.5 sm:space-y-2.5 w-full">
+                    <div className="flex items-center justify-between sm:w-full shrink-0">
                       <div className="w-8 h-8 rounded-xl bg-slate-50 group-hover:bg-white border border-slate-200/80 flex items-center justify-center shrink-0 shadow-2xs transition-colors">
                         {q.icon}
                       </div>
-                      <span className="text-xs text-slate-300 group-hover:text-blue-500 transition-colors">
+                      <span className="hidden sm:inline text-xs text-slate-300 group-hover:text-blue-500 transition-colors">
                         →
                       </span>
                     </div>
-                    <div>
-                      <div className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors line-clamp-2">
-                        {q.title}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors line-clamp-2">
+                          {q.title}
+                        </div>
+                        <span className="sm:hidden text-xs text-slate-300 group-hover:text-blue-500 transition-colors shrink-0">
+                          →
+                        </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
+                      <div className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 sm:mt-1 leading-snug">
                         {q.desc}
                       </div>
                     </div>
@@ -221,13 +232,20 @@ export default function ChatbotPage() {
                   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
                   isUser
                     ? "bg-[#1E293B] text-white"
-                    : "bg-[#2563EB] text-white"
+                    : "bg-blue-50 border border-blue-200/80 p-0.5 shadow-2xs"
                 )}
               >
                 {isUser ? (
                   <User className="h-3.5 w-3.5" />
                 ) : (
-                  <Bot className="h-3.5 w-3.5" />
+                  <Image
+                    src="/billy.png"
+                    alt="Billy"
+                    width={20}
+                    height={20}
+                    className="w-4 h-4 object-contain"
+                    style={{ width: "auto", height: "auto" }}
+                  />
                 )}
               </div>
 
@@ -254,8 +272,15 @@ export default function ChatbotPage() {
 
         {status === "submitted" && (
           <div className="flex items-start gap-2.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2563EB] text-white">
-              <Bot className="h-3.5 w-3.5" />
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 border border-blue-200/80 p-0.5 shadow-2xs">
+              <Image
+                src="/billy.png"
+                alt="Billy"
+                width={20}
+                height={20}
+                className="w-4 h-4 object-contain"
+                style={{ width: "auto", height: "auto" }}
+              />
             </div>
             <div className="rounded-2xl rounded-tl-sm border border-[#CBD5E1] bg-[#F3F4F6] px-3.5 py-2.5 text-xs text-[#64748B]">
               <span className="inline-flex items-center gap-2">
@@ -295,20 +320,20 @@ export default function ChatbotPage() {
       </div>
 
       {/* Input & Context Controls Area (Pinned to bottom) */}
-      <div className="border-t border-slate-200/80 bg-white p-3 sm:p-3.5 shrink-0 space-y-2.5">
+      <div className="border-t border-slate-200/80 bg-white p-2.5 sm:p-3.5 shrink-0 space-y-2">
         {/* Top Toolbar: Statement Context Dropdown & Actions */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
             {/* Attached Statement Selector Pill */}
             {audits.length > 0 && (
-              <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold shrink-0">
+              <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold min-w-0 flex-1 sm:flex-initial">
                 <Building2 className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                <span className="text-[10px] uppercase font-bold text-slate-400">Context:</span>
+                <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Context:</span>
                 <select
                   id="chatbot-bill-select"
                   value={selectedAuditId}
                   onChange={(e) => setSelectedAuditId(e.target.value)}
-                  className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer max-w-[190px] sm:max-w-[280px] truncate"
+                  className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer min-w-0 flex-1 sm:max-w-[280px] truncate"
                 >
                   <option value="">General PH Billing Mode</option>
                   {audits.map((a) => (

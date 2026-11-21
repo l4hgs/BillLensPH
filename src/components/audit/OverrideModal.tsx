@@ -245,7 +245,7 @@ export function OverrideModal({
                   step="any"
                   value={quantity}
                   onChange={(e) => handleQuantityChange(e.target.value)}
-                  className={inputClass}
+                  className={cn(inputClass, "font-mono tabular-nums")}
                 />
               </div>
               <div>
@@ -260,7 +260,7 @@ export function OverrideModal({
                   step="any"
                   value={unitPrice}
                   onChange={(e) => handleUnitPriceChange(e.target.value)}
-                  className={inputClass}
+                  className={cn(inputClass, "font-mono tabular-nums")}
                 />
               </div>
               <div>
@@ -275,7 +275,7 @@ export function OverrideModal({
                   step="any"
                   value={total}
                   onChange={(e) => setTotal(e.target.value)}
-                  className={inputClass}
+                  className={cn(inputClass, "font-mono tabular-nums")}
                 />
               </div>
             </div>

@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -24,7 +24,13 @@ import { User } from "@supabase/supabase-js";
 
 export default function AuthPage() {
   const router = useRouter();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("mode") === "signup";
+    }
+    return false;
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -36,6 +42,12 @@ export default function AuthPage() {
       const params = new URLSearchParams(window.location.search);
       const errParam = params.get("error");
       const msgParam = params.get("message") || params.get("error_description");
+      if (errParam === "account_not_found") {
+        return (
+          msgParam ||
+          "No existing account was found for that Google email. Please use Create Account below to register first."
+        );
+      }
       if (errParam || msgParam) {
         return msgParam
           ? `Authentication failed: ${msgParam}`
@@ -46,6 +58,7 @@ export default function AuthPage() {
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -177,18 +190,29 @@ export default function AuthPage() {
       // PKCE code_verifier cookie so initial recovery cannot wipe it.
       await supabase.auth.getSession();
 
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-        getRedirectDestination()
-      )}`;
+      // Store destination and current auth tab mode ("signin" vs "signup") in cookies
+      // and pass a clean query-free callback URL (`${window.location.origin}/auth/callback`)
+      // so Supabase Redirect URL allowlists without `**` wildcards never reject the URL!
+      const destination = getRedirectDestination();
+      const authMode = isSignUp ? "signup" : "signin";
+      document.cookie = `billlens_auth_next=${encodeURIComponent(
+        destination
+      )}; path=/; max-age=600; SameSite=Lax`;
+      document.cookie = `billlens_auth_mode=${authMode}; path=/; max-age=600; SameSite=Lax`;
+      const redirectTo = `${window.location.origin}/auth/callback`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
+          queryParams: isSignUp
+            ? {
+                access_type: "offline",
+                prompt: "consent",
+              }
+            : {
+                prompt: "select_account",
+              },
         },
       });
 
@@ -222,9 +246,13 @@ export default function AuthPage() {
   if (currentUser) {
     const displayName =
       currentUser.user_metadata?.full_name ||
+      currentUser.user_metadata?.name ||
       currentUser.email?.split("@")[0] ||
       "BillLens User";
-    const initial = (currentUser.email || "U").charAt(0).toUpperCase();
+    const avatarUrl =
+      (currentUser.user_metadata?.avatar_url as string | undefined) ||
+      (currentUser.user_metadata?.picture as string | undefined) ||
+      null;
     const memberSince = currentUser.created_at
       ? new Date(currentUser.created_at).toLocaleDateString("en-PH", {
           month: "short",
@@ -238,9 +266,19 @@ export default function AuthPage() {
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-soft p-6 sm:p-7 space-y-5">
           {/* Header Profile Identity */}
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
-            <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-black text-xl shadow-xs shrink-0">
-              {initial}
-            </div>
+            {avatarUrl && !avatarError ? (
+              <img
+                src={avatarUrl}
+                alt={displayName}
+                referrerPolicy="no-referrer"
+                onError={() => setAvatarError(true)}
+                className="w-14 h-14 rounded-2xl object-cover border border-blue-200 shadow-xs shrink-0"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-xs shrink-0">
+                <UserIcon className="w-7 h-7" />
+              </div>
+            )}
 
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-0.5">
@@ -347,14 +385,23 @@ export default function AuthPage() {
   return (
     <div className="w-full max-w-md mx-auto space-y-6 py-4 sm:py-6">
       <div className="text-center space-y-2">
-        <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 mx-auto flex items-center justify-center text-blue-600 shadow-soft mb-2">
-          <ShieldCheck className="w-6 h-6" />
+        <div className="w-14 h-14 rounded-2xl bg-blue-50/70 border border-blue-200/80 mx-auto flex items-center justify-center p-1.5 shadow-soft mb-2">
+          <Image
+            src="/billy.png"
+            alt="BillLens PH Logo"
+            width={44}
+            height={44}
+            className="w-10 h-10 object-contain"
+            style={{ width: "auto", height: "auto" }}
+          />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          BillLens<span className="text-[#DC2626]">PH</span> Account
+          BillLens<span className="text-[#2563EB]">PH</span> Account
         </h1>
         <p className="text-xs text-slate-500 max-w-xs mx-auto">
-          Sign in to save statement audits, track case rate deductions, and export negotiation briefs.
+          {isSignUp
+            ? "Create an account to save statement audits, track case rate deductions, and export negotiation briefs."
+            : "Sign in to your existing account to access your saved statement audits and negotiation briefs."}
         </p>
       </div>
 
@@ -430,7 +477,11 @@ export default function AuthPage() {
             />
           </svg>
           <span>
-            {oauthLoading ? "Connecting..." : "Continue with Google"}
+            {oauthLoading
+              ? "Connecting..."
+              : isSignUp
+              ? "Sign up with Google"
+              : "Sign in with Google"}
           </span>
         </Button>
 

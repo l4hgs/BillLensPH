@@ -321,7 +321,7 @@ export default function NegotiationBriefPage({
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 print:max-w-none print:space-y-0">
+    <div className="w-full max-w-none space-y-6 print:space-y-0">
       {/* Top Interactive Toolbar (Hidden when printing) */}
       <div className="no-print print:hidden space-y-3">
         <div className="flex flex-col gap-3 rounded-2xl border border-[#CBD5E1] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">

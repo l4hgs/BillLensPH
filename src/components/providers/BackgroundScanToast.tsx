@@ -29,7 +29,7 @@ export function BackgroundScanToast() {
   return (
     <aside
       aria-label="Background scan status"
-      className="fixed bottom-20 sm:bottom-5 right-4 sm:right-5 z-50 max-w-xs w-[calc(100vw-2rem)]"
+      className="fixed bottom-24 sm:bottom-5 right-4 sm:right-5 z-50 max-w-xs w-[calc(100vw-2rem)]"
     >
       <div
         className={cn(

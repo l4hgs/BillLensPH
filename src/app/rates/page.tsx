@@ -431,11 +431,11 @@ export default function RatesPage() {
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6">
+    <div className="w-full max-w-none space-y-6">
       {/* Redesigned Header - Clean, No Card Background */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1 pb-1 sm:pt-2 sm:pb-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-[-0.03em] text-slate-900">
             Benefit Case Rates Directory
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -763,7 +763,7 @@ export default function RatesPage() {
           })}
         </div>
 
-        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap pb-2">
+        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap pb-2 font-mono tabular-nums">
           {filtered.length} package{filtered.length === 1 ? "" : "s"}
         </span>
       </div>
@@ -849,7 +849,7 @@ export default function RatesPage() {
                         <span className="text-[10px] font-semibold text-slate-600 uppercase">
                           {pkg.category}
                         </span>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-mono">
                           <FileText className="w-2.5 h-2.5" />
                           Circ. {pkg.circularId} ({pkg.effectiveFrom})
                         </span>
@@ -869,7 +869,7 @@ export default function RatesPage() {
                       <span className="text-[10px] uppercase font-bold text-slate-600 block">
                         Fixed Benefit
                       </span>
-                      <span className="font-black text-sm sm:text-base text-emerald-800">
+                      <span className="font-black text-sm sm:text-base text-emerald-800 font-mono tabular-nums">
                         {formatPHP(pkg.totalRate)}
                       </span>
                     </div>
@@ -886,14 +886,14 @@ export default function RatesPage() {
                     <div className="flex items-center gap-3">
                       <span>
                         Facility (HCI) Cap:{" "}
-                        <strong className="text-slate-800">
+                        <strong className="text-slate-800 font-mono tabular-nums">
                           {formatPHP(pkg.hciFee)}
                         </strong>
                       </span>
                       <span>•</span>
                       <span>
                         Prof. Fee (PF) Cap:{" "}
-                        <strong className="text-slate-800">
+                        <strong className="text-slate-800 font-mono tabular-nums">
                           {formatPHP(pkg.profFee)}
                         </strong>
                       </span>
@@ -923,7 +923,7 @@ export default function RatesPage() {
                           <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
                           Mandatory Package Inclusions (Cannot be Unbundled)
                         </span>
-                        <Badge variant="neutral" className="text-[10px]">
+                        <Badge variant="neutral" className="text-[10px] font-mono tabular-nums">
                           {pkg.inclusiveItems.length} Inclusions
                         </Badge>
                       </div>

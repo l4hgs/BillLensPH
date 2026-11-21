@@ -121,58 +121,66 @@ export function TrafficLightSummary({
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white shadow-soft overflow-hidden">
-      {/* 1. Top Section: Key Financial Impact Metrics */}
+      {/* 1. Top Section: Key Financial Impact Metrics (Compact Left-to-Right 3-Col on Mobile & Desktop) */}
       {grossTotal !== undefined && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 p-4 sm:p-5 gap-3 sm:gap-0">
+        <div className="grid grid-cols-3 divide-x divide-slate-100 p-3 sm:p-5 gap-1 sm:gap-0">
           {/* Total Billed */}
-          <div className="sm:pr-4 space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+          <div className="pr-2 sm:pr-4 space-y-0.5 sm:space-y-1 min-w-0">
+            <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block truncate">
               Total Billed
             </span>
-            <span className="text-xl sm:text-2xl font-black text-slate-900 block tracking-tight">
+            <span className="text-xs sm:text-xl md:text-2xl font-black text-slate-900 block tracking-tight font-mono tabular-nums truncate">
               {formatPHP(grossTotal)}
             </span>
             {actualOutOfPocket !== undefined && (
-              <span className="text-xs text-slate-500 block">
-                Hospital asks: <strong className="font-semibold text-slate-700">{formatPHP(actualOutOfPocket)}</strong>
+              <span className="text-[10px] sm:text-xs text-slate-500 block leading-tight truncate">
+                <span className="hidden sm:inline">Hospital asks: </span>
+                <span className="sm:hidden">Asks: </span>
+                <strong className="font-semibold text-slate-700 font-mono tabular-nums">
+                  {formatPHP(actualOutOfPocket)}
+                </strong>
               </span>
             )}
           </div>
 
           {/* Potential Savings */}
-          <div className="sm:px-4 pt-3 sm:pt-0 space-y-1">
-            <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600">
-              <AlertTriangle className="h-3 w-3" />
-              Potential Savings
+          <div className="px-2 sm:px-4 space-y-0.5 sm:space-y-1 min-w-0">
+            <span className="flex items-center gap-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-amber-600 truncate">
+              <AlertTriangle className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
+              <span className="hidden sm:inline truncate">Potential Savings</span>
+              <span className="sm:hidden truncate">Savings</span>
             </span>
-            <span className="text-xl sm:text-2xl font-black text-amber-600 block tracking-tight">
+            <span className="text-xs sm:text-xl md:text-2xl font-black text-amber-600 block tracking-tight font-mono tabular-nums truncate">
               {formatPHP(potentialSavings)}
             </span>
-            <span className="text-xs text-amber-700/80 block">
-              Unbundled &amp; missed discounts
+            <span className="text-[10px] sm:text-xs text-amber-700/80 block leading-tight truncate">
+              <span className="hidden sm:inline">Unbundled &amp; missed discounts</span>
+              <span className="sm:hidden">Discounts &amp; ACR</span>
             </span>
           </div>
 
           {/* Fair Balance Due */}
-          <div className="sm:pl-4 pt-3 sm:pt-0 space-y-1">
-            <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-600">
-              <ShieldCheck className="h-3 w-3" />
-              Fair Balance Due
+          <div className="pl-2 sm:pl-4 space-y-0.5 sm:space-y-1 min-w-0">
+            <span className="flex items-center gap-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-emerald-600 truncate">
+              <ShieldCheck className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
+              <span className="hidden sm:inline truncate">Fair Balance Due</span>
+              <span className="sm:hidden truncate">Fair Balance</span>
             </span>
-            <span className="text-xl sm:text-2xl font-black text-emerald-600 block tracking-tight">
+            <span className="text-xs sm:text-xl md:text-2xl font-black text-emerald-600 block tracking-tight font-mono tabular-nums truncate">
               {formatPHP(fairOutOfPocket ?? (grossTotal - potentialSavings))}
             </span>
-            <span className="text-xs text-emerald-700/80 block">
-              Estimated fair out-of-pocket
+            <span className="text-[10px] sm:text-xs text-emerald-700/80 block leading-tight truncate">
+              <span className="hidden sm:inline">Estimated fair out-of-pocket</span>
+              <span className="sm:hidden">Est. fair due</span>
             </span>
           </div>
         </div>
       )}
 
       {/* 2. Middle Section: Slim Proportional Visual Progress Bar */}
-      <div className="px-4 sm:px-5 pt-1 pb-3.5">
+      <div className="px-3 sm:px-5 pt-0.5 pb-2.5 sm:pt-1 sm:pb-3.5">
         <div
-          className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100 shadow-inner"
+          className="flex h-1.5 sm:h-2 w-full overflow-hidden rounded-full bg-slate-100 shadow-inner"
           role="img"
           aria-label={`Bill breakdown: ${stats
             .map((s) => `${TIER_META[s.tier].label} ${s.count} items`)
@@ -191,9 +199,9 @@ export function TrafficLightSummary({
         </div>
       </div>
 
-      {/* 3. Bottom Section: Interactive Line-Item Triage Filter Strip */}
-      <div className="p-3.5 sm:p-4 bg-slate-50/50 border-t border-slate-100">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+      {/* 3. Bottom Section: Interactive Line-Item Triage Filter Strip (Left-to-Right 3-Col on Mobile & Desktop) */}
+      <div className="p-2.5 sm:p-4 bg-slate-50/50 border-t border-slate-100">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
           {stats.map(({ tier, count, amount }) => {
             const meta = TIER_META[tier];
             const isActive = activeTier === tier;
@@ -204,52 +212,56 @@ export function TrafficLightSummary({
                 aria-pressed={isActive}
                 onClick={() => onSelectTier(isActive ? null : tier)}
                 className={cn(
-                  "group relative flex flex-col justify-between p-3 rounded-xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+                  "group relative flex flex-col justify-between p-2 sm:p-3 rounded-xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-w-0",
                   isActive
                     ? "bg-white border-blue-500 shadow-xs ring-2 ring-blue-500/20"
                     : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-2xs"
                 )}
               >
                 {/* Row 1: Icon & Count Badge */}
-                <div className="flex items-center justify-between w-full">
+                <div className="flex items-center justify-between w-full gap-1">
                   <span
                     className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+                      "flex h-5 w-5 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded-md transition-colors",
                       isActive ? meta.iconWrap : "bg-slate-100 text-slate-600 group-hover:" + meta.iconWrap
                     )}
                   >
-                    <meta.Icon className="h-3.5 w-3.5" />
+                    <meta.Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                   </span>
                   <span
                     className={cn(
-                      "px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums",
+                      "px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold font-mono tabular-nums shrink-0",
                       isActive
                         ? "bg-blue-100 text-blue-700"
                         : "bg-slate-100 text-slate-600 group-hover:bg-slate-200/80"
                     )}
                   >
-                    {count} {count === 1 ? "item" : "items"}
+                    {count}
+                    <span className="hidden sm:inline">
+                      {" "}
+                      {count === 1 ? "item" : "items"}
+                    </span>
                   </span>
                 </div>
 
                 {/* Row 2: Full Title Label */}
-                <div className="mt-2 min-w-0">
-                  <span className="text-xs font-bold text-slate-800 block leading-snug">
+                <div className="mt-1.5 sm:mt-2 min-w-0">
+                  <span className="text-[11px] sm:text-xs font-bold text-slate-800 block leading-tight">
                     {meta.label}
                   </span>
                 </div>
 
                 {/* Row 3: Amount & Filter Cue */}
-                <div className="flex items-baseline justify-between w-full mt-2 pt-2 border-t border-slate-100/90">
-                  <span className="text-xs sm:text-sm font-black text-slate-900 tracking-tight">
+                <div className="flex items-baseline justify-between w-full mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-slate-100/90 gap-1">
+                  <span className="text-[11px] sm:text-sm font-black text-slate-900 tracking-tight font-mono tabular-nums truncate">
                     {formatPHP(amount)}
                   </span>
                   {isActive ? (
-                    <span className="text-[10px] font-bold text-blue-600">
-                      Filtering ✓
+                    <span className="text-[9px] sm:text-[10px] font-bold text-blue-600 shrink-0">
+                      <span className="hidden sm:inline">Filtering </span>✓
                     </span>
                   ) : (
-                    <span className="text-[10px] font-semibold text-slate-400 group-hover:text-blue-600 transition-colors">
+                    <span className="hidden sm:inline text-[10px] font-semibold text-slate-400 group-hover:text-blue-600 transition-colors shrink-0">
                       Filter →
                     </span>
                   )}

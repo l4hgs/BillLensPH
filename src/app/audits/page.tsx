@@ -319,11 +319,11 @@ export default function DocumentArchivePage() {
   );
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6">
+    <div className="w-full max-w-none space-y-6">
       {/* Redesigned Header - Clean, No Card Background */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1 pb-1 sm:pt-2 sm:pb-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-[-0.03em] text-slate-900">
             Audited Hospital Statements
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -342,7 +342,7 @@ export default function DocumentArchivePage() {
                 Audit Protection Total
               </span>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-base sm:text-lg font-black tracking-tight text-blue-600">
+                <span className="text-base sm:text-lg font-black tracking-tight text-blue-600 font-mono tabular-nums">
                   {formatPHP(protectionTotal)}
                 </span>
                 <span className="text-[10px] font-semibold text-slate-400">
@@ -476,12 +476,12 @@ export default function DocumentArchivePage() {
                             {doc.facility}
                           </h4>
                         </div>
-                        <span className="font-black text-sm text-[#1E293B] shrink-0">
+                        <span className="font-black text-sm text-[#1E293B] shrink-0 font-mono tabular-nums">
                           {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
                         </span>
                       </div>
 
-                      <p className="text-xs text-[#64748B] font-medium">
+                      <p className="text-xs text-[#64748B] font-medium font-mono">
                         {doc.fileSize} • {doc.fileType} • {doc.dateText}
                       </p>
 
