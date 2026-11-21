@@ -20,12 +20,10 @@ import {
   applyOverridesToBill,
   statusOverridesFrom,
 } from "@/lib/auditOverrides";
-import { formatPHP } from "@/lib/utils";
 import { buildSystemPrompt } from "@/lib/chatbotPrompt";
 import type {
   AuditEngineResult,
   AuditOverrides,
-  AuditedLineItem,
   ExtractedBillData,
 } from "@/types/audit";
 

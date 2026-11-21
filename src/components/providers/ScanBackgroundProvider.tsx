@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
 import type {
@@ -88,6 +89,7 @@ export function ScanBackgroundProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const [scanState, setScanState] = useState<ScanState>(defaultScanState);
   const activeJobRef = useRef<boolean>(false);
 
@@ -134,13 +136,13 @@ export function ScanBackgroundProvider({
 
         notif.onclick = () => {
           window.focus();
-          window.location.href = `/audits/${auditId}`;
+          router.push(`/audits/${auditId}`);
         };
       } catch {
         // Notification API fallback
       }
     },
-    []
+    [router]
   );
 
   // Prevent accidental tab closure while active scan is processing

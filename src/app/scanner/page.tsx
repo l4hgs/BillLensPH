@@ -21,11 +21,9 @@ import {
   compressBillImage,
   isSupportedBillFile,
 } from "@/lib/imageCompression";
-import type { Json } from "@/lib/supabase/database.types";
 import type {
   ScannedPage,
   PipelineStage,
-  StagedFileMeta,
   AuditEngineResult,
   StatutoryDiscountType,
   EligibilitySnapshot,
@@ -88,7 +86,6 @@ export default function ScannerPage() {
     useState<StatutoryDiscountType>("regular");
   const [eligibilitySnapshot, setEligibilitySnapshot] =
     useState<EligibilitySnapshot>(DEFAULT_ELIGIBILITY_SNAPSHOT);
-  const [isAnalyzingOcr, setIsAnalyzingOcr] = useState<boolean>(false);
   const [ocrAuditResult, setOcrAuditResult] = useState<AuditEngineResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -463,7 +460,6 @@ export default function ScannerPage() {
         statusMessage={effectiveStatusMessage}
         hospitalName={hospitalName}
         setHospitalName={setHospitalName}
-        stagedAuditId={stagedAuditId ?? scanState.auditId}
         onUploadAndStage={handleUploadAndStage}
         onResetAll={handleResetAll}
         statutoryDiscountType={statutoryDiscountType}

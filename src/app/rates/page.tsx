@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Search,
@@ -211,14 +211,17 @@ export default function RatesPage() {
     }
   }, [supabase]);
 
-  useLayoutEffect(() => {
-    try {
-      if (localStorage.getItem("billlens_is_admin") === "1") {
-        setIsAdmin(true);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      try {
+        if (localStorage.getItem("billlens_is_admin") === "1") {
+          setIsAdmin(true);
+        }
+      } catch {
+        // Ignore storage access errors
       }
-    } catch {
-      // Ignore storage access errors
-    }
+    });
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   useEffect(() => {

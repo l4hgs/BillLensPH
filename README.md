@@ -1,116 +1,193 @@
-# BillLens PH 🇵🇭
+<div align="center">
+  <a href="https://billlens-ph-rccocantos.vercel.app/">
+    <img src="public/logo-header.png" alt="BillLens PH" width="220" />
+  </a>
 
-**BillLens PH** is a mobile-first healthcare advocacy web application that translates opaque Philippine hospital Itemized Statements of Account (ISAs) and Statements of Account (SOAs) into transparent financial audits, cross-references mandatory **PhilHealth All-Case-Rates (ACR)** & **Senior/PWD (RA 9994 / RA 10754)** deductions, and generates formal hospital billing negotiation briefs.
+  <h1>BillLens PH</h1>
+
+  <p>
+    <strong>Philippine Hospital Statement Auditor, PhilHealth ACR Verifier &amp; Billing Advocacy Workspace</strong>
+  </p>
+
+  <p>
+    <a href="https://billlens-ph-rccocantos.vercel.app/"><strong>Live App</strong></a>
+    &middot;
+    <a href="https://github.com/l4hgs/BillLensPH">Repository</a>
+    &middot;
+    <a href="#getting-started">Getting Started</a>
+    &middot;
+    <a href="#key-screens--workflows">Key Screens</a>
+  </p>
+
+  <p>
+    <img src="https://img.shields.io/badge/Next.js-16.4.6-0F172A?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js 16.4.6" />
+    <img src="https://img.shields.io/badge/React-19.3-2563EB?style=flat-square&logo=react&logoColor=white" alt="React 19.3" />
+    <img src="https://img.shields.io/badge/TypeScript-5-0F172A?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5" />
+    <img src="https://img.shields.io/badge/Tailwind_CSS-v4-2563EB?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS v4" />
+    <img src="https://img.shields.io/badge/Supabase-Postgres_&_RLS-0F172A?style=flat-square&logo=supabase&logoColor=white" alt="Supabase" />
+    <img src="https://img.shields.io/badge/Google_Gemini-Vision_&_Chat-2563EB?style=flat-square&logo=googlegemini&logoColor=white" alt="Google Gemini" />
+  </p>
+</div>
 
 ---
 
-## ✨ Key Features & Sprint Status
+## Table of Contents
 
-| Sprint | Milestone | Status |
+- [Overview](#overview)
+- [Key Screens & Workflows](#key-screens--workflows)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Official Reference Portals](#official-reference-portals)
+- [Data Privacy & Disclaimer](#data-privacy--disclaimer)
+
+---
+
+## Overview
+
+**BillLens PH** translates complex Philippine hospital Itemized Statements of Account (ISAs) and Statements of Account (SOAs) into transparent, line-by-line financial audits.
+
+- **PhilHealth Case Rate Verification:** Cross-references procedures and diagnoses against official **PhilHealth All-Case-Rates (ACR)** benefit caps, including **Circular 2024-0037+** tariff updates and HCI/PF splits.
+- **Anti-Unbundling Enforcement:** Flags routine operating room supplies, basic packs, and standard medications that are prohibited from separate out-of-pocket billing when bundled into a claimed case rate.
+- **Statutory Discount Sequencing:** Enforces legal deduction order under **RA 9994** (Expanded Senior Citizens Act), **RA 10754** (PWD Act), and **NIRC Sec. 109(G)** (12% VAT exemption followed by 20% discount prior to PhilHealth deduction).
+- **A4 Negotiation & Subsidy Briefs:** Generates formal, print-ready hospital billing dispute letters and **Malasakit Center (RA 11463)** assistance briefs.
+
+---
+
+## Key Screens & Workflows
+
+| Screen | Route | Purpose |
 | :--- | :--- | :--- |
-| **Week 1** | Foundation, Supabase Auth (Google OAuth + Email) & Mobile UI Shell | ✅ **100% Complete** |
-| **Week 2** | Document Ingestion, Client-Side WebP Compression & `bill-uploads` Storage RLS | ✅ **100% Complete** |
-| **Week 3** | Gemini Flash Multimodal Vision OCR & Rule-Based PhilHealth Matching Engine | ✅ **100% Complete** |
-| **Week 4** | Interactive Audit Studio & Three-Tier Traffic-Light Categorization UI | ✅ **100% Complete** |
-| **Week 5** | AI Health & Malasakit Subsidy Copilot Chatbot | ✅ **100% Complete** |
-| **Week 6** | Printable Negotiation Brief Export (`window.print()`) & Vercel Deployment Ready | ✅ **100% Complete** |
+| **Home** | [`/`](https://billlens-ph-rccocantos.vercel.app/) | Server-hydrated landing overview with an interactive convex magnifying-lens hero and statutory inspection showcase. |
+| **Scan Hub** | [`/scanner`](https://billlens-ph-rccocantos.vercel.app/scanner) | Camera capture and multi-page dropzone with client-side WebP/JPEG compression, pre-scan PhilHealth/ward parameters, and persistent background OCR/audit progress. |
+| **Document Archive** | [`/audits`](https://billlens-ph-rccocantos.vercel.app/audits) | Searchable, time-filtered list of audited statements with total protection savings, thumbnails, and layout-matched skeletons. |
+| **Audit Studio** | `/audits/[id]` | Split-screen statement viewer paired with three-tier Traffic-Light categorization, non-destructive line-item overrides, parameter recalculation, and the **Ask Billy** drawer. |
+| **Negotiation Brief** | `/audits/[id]/brief` | Formal A4 portrait printable (`@media print`) dispute and Malasakit Center cover letter with signatory customization and plain-text copy. |
+| **PhilHealth Rates** | [`/rates`](https://billlens-ph-rccocantos.vercel.app/rates) | Searchable All-Case-Rates directory showing fixed benefit caps, HCI/PF splits, mandatory bundled inclusions, and AI-assisted rate discovery. |
+| **AI Chatbot (Billy)** | [`/chatbot`](https://billlens-ph-rccocantos.vercel.app/chatbot) | Full-height (`dvh`-aware) conversational billing navigator grounded in Philippine healthcare rules and optional active statement context. |
+| **Profile & Account** | [`/auth`](https://billlens-ph-rccocantos.vercel.app/auth) | Single-screen Sign In / Create Account view (Google OAuth & Email) and saved member defaults for contributor category, ward type, MDR/PIN, and facility level. |
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-* **Framework:** [Next.js 16.4.3](https://nextjs.org/) (App Router, Turbopack, TypeScript 5)
-* **Styling & UI:** Tailwind CSS v4, Shadcn UI Primitives, Lucide React (`Productive Minimalism` design system)
-* **Backend & Storage:** [Supabase](https://supabase.com/) (PostgreSQL, SSR Cookie Auth, Row-Level Security, Encrypted Storage)
-* **AI & Multimodal OCR:** Google Gemini Flash Vision & Chat API
+| Layer | Technologies |
+| :--- | :--- |
+| **Framework & Language** | [Next.js 16.4.6](https://nextjs.org/) (App Router, Turbopack), [React 19.3](https://react.dev/), [TypeScript 5](https://www.typescriptlang.org/) |
+| **Styling & UI** | [Tailwind CSS v4](https://tailwindcss.com/), [Lucide React](https://lucide.dev/) (full-width non-bento editorial layout, `44px` tap targets, unified auto-dismissing toasts) |
+| **Backend, Auth & Storage** | [Supabase](https://supabase.com/) (PostgreSQL, SSR Cookie Auth, Row-Level Security, private `bill-uploads` bucket) |
+| **AI & Streaming** | Google Gemini via [Vercel AI SDK](https://sdk.vercel.ai/) (`ai`, `@ai-sdk/google`, `@ai-sdk/react`) |
+| **Quality & Testing** | [Vitest 5](https://vitest.dev/), [ESLint 9](https://eslint.org/) (`eslint-config-next`) |
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 BillLensPH/
-├── docs/                                   # 📚 Sprint roadmaps, objectives & collaborator guides
-│   ├── SETUP.md                            # Step-by-step developer onboarding & environment setup
-│   ├── Implementation_Roadmap.md           # 6-week architecture & database specification
-│   ├── Week2_Objectives.md                 # Completed Week 2 checklist
-│   └── Week3_Objectives.md                 # Upcoming Week 3 AI OCR & Matching Engine plan
-│
-├── supabase/                               # 🗄️ Reproducible SQL migrations & seed data
-│   ├── migrations/
-│   │   ├── 001_initial_schema.sql          # Core tables (`profiles`, `audits`, `philhealth_packages`) & RLS
-│   │   └── 002_storage_setup.sql           # Private `bill-uploads` bucket & user-scoped RLS policies
-│   └── seeds/                              # PhilHealth ACR case rate seed scripts (Week 3)
-│
-├── src/
-│   ├── app/                                # ⚡ Next.js App Router pages & route handlers
-│   │   ├── api/audit/ocr/route.ts          # Multimodal Gemini Flash Vision OCR & audit engine endpoint
-│   │   ├── api/audit/chat/route.ts         # Context-injected AI Copilot streaming endpoint
-│   │   ├── (auth)/auth/page.tsx            # Sign In, Create Account & Verified Profile view
-│   │   ├── auth/callback/route.ts          # OAuth PKCE code exchange endpoint
-│   │   ├── scanner/page.tsx                # Scan Hub controller (Camera capture, dropzone & staging)
-│   │   ├── audits/page.tsx                 # Document Archive (live Supabase audits + sample records)
-│   │   ├── audits/[id]/page.tsx            # Interactive Audit Studio (Traffic-Light tiers & overrides)
-│   │   ├── audits/[id]/brief/page.tsx      # Printable Formal Negotiation Brief view (`window.print()`)
-│   │   ├── rates/page.tsx                  # PhilHealth All-Case-Rates (ACR v3) directory
-│   │   ├── copilot/page.tsx                # AI Health & Subsidy Copilot interface
-│   │   ├── layout.tsx                      # Root responsive shell (Header + MobileContainer + BottomNav)
-│   │   └── page.tsx                        # Landing & advocacy onboarding view
-│   │
-│   ├── components/                         # 🧩 Modular UI & Feature Components
-│   │   ├── ui/                             # Reusable primitives (`button.tsx`, `card.tsx`, `badge.tsx`)
-│   │   ├── layout/                         # Navigation & shell (`Header.tsx`, `BottomNav.tsx`, `ModeSelector.tsx`)
-│   │   ├── scanner/                        # Scanner feature views (`ScannerViewfinder.tsx`, `StatementStagingCard.tsx`)
-│   │   └── audit/                          # Audit Studio, Copilot Drawer & Negotiation Brief components
-│   │
-│   ├── lib/                                # 🛠️ Core Engines & Supabase Clients
-│   │   ├── supabase/                       # Browser, Server, Middleware clients & clock-skew normalizer
-│   │   ├── gemini.ts                       # Gemini 3 Flash Vision extraction engine
-│   │   ├── auditEngine.ts                  # PhilHealth ACR matching, unbundling & Senior/PWD rule engine
-│   │   ├── auditOverrides.ts               # Non-destructive manual override diffing & application
-│   │   ├── sampleAudits.ts                 # Built-in Philippine hospital ISA fixtures for E2E testing
-│   │   ├── imageCompression.ts             # Client-side canvas downscaler (max 1600px, WebP/JPEG ~300KB)
-│   │   └── utils.ts                        # PHP currency formatter (`formatPHP`) & class utilities
-│   │
-│   ├── types/                              # 📐 Shared TypeScript Interfaces
-│   │   └── audit.ts                        # `ScannedPage`, `PipelineStage`, `StagedFileMeta`, `AuditDoc`
-│   │
-│   └── middleware.ts                       # Next.js SSR auth session updater
-│
-├── .env.local.example                      # 📋 Template for required environment variables
-└── package.json
+├── public/                                 # Brand logos (logo-header.png, logo-wordmark.png), Billy assets & icons
+├── supabase/                               # Reproducible SQL migrations & PhilHealth ACR seed data
+├── scripts/
+│   └── seed-packages.mjs                   # PhilHealth case rate catalog seeding script
+└── src/
+    ├── app/
+    │   ├── (auth)/auth/page.tsx            # Server entry for Sign In / Create Account & Profile defaults
+    │   ├── api/
+    │   │   ├── audit/ocr/route.ts          # Multimodal Gemini Vision OCR & audit engine endpoint
+    │   │   ├── audit/chat/route.ts         # Context-injected Billy streaming chat endpoint
+    │   │   ├── rates/route.ts              # Case rate catalog API
+    │   │   └── rates/discover/route.ts     # AI case rate discovery endpoint
+    │   ├── audits/
+    │   │   ├── (list)/                     # Document Archive route & route loading skeleton
+    │   │   └── [id]/                       # Audit Studio & printable A4 Negotiation Brief routes
+    │   ├── auth/callback/route.ts          # Supabase OAuth PKCE callback handler
+    │   ├── chatbot/page.tsx                # Full-screen AI Chatbot ("Billy") view
+    │   ├── rates/page.tsx                  # PhilHealth ACR directory & circular manager
+    │   ├── scanner/page.tsx                # Scan Hub ingestion & staging controller
+    │   ├── globals.css                     # Tailwind CSS v4, print A4 rules & reduced-motion animations
+    │   ├── layout.tsx                      # Root layout (Header + MobileContainer + BottomNav + AppProviders)
+    │   └── page.tsx                        # Server entry for Home landing view
+    ├── components/
+    │   ├── audit/                          # AuditLineItemRow, AuditParametersModal, AuditSkeletons,
+    │   │                                   # AuditCopilotDrawer, NegotiationBriefDocument, OverrideModal,
+    │   │                                   # SideBySideBillViewer, TrafficLight
+    │   ├── auth/                           # AuthClient (single-screen auth + profile defaults)
+    │   ├── home/                           # HomeClient (interactive convex lens hero & inspection tabs)
+    │   ├── layout/                         # Header, BottomNav, MobileContainer
+    │   ├── providers/                      # AppProviders, ToastProvider, BackgroundScanToast,
+    │   │                                   # ScanBackgroundProvider, ChatbotBackgroundProvider
+    │   ├── scanner/                        # ScannerViewfinder, StatementStagingCard
+    │   └── ui/                             # button, badge, card, select-menu
+    ├── lib/
+    │   ├── supabase/                       # Browser, Server, Middleware clients & clockSkewFetch
+    │   ├── __tests__/                      # Unit tests (auditEngine.test.ts, chatbotGuardrails.test.ts)
+    │   ├── auditEngine.ts                  # PhilHealth ACR matching, unbundling & Senior/PWD engine
+    │   ├── auditOverrides.ts               # Non-destructive manual override diffing & recalculation
+    │   ├── billingClassification.ts        # Billing line classification helpers
+    │   ├── caseRateDiscovery.ts            # AI case rate lookup helpers
+    │   ├── chatbotPrompt.ts                # Billy system prompt & Philippine billing guardrails
+    │   ├── gemini.ts                       # Gemini Vision extraction & chat helpers
+    │   ├── imageCompression.ts             # Client-side canvas downscaler (max 1600px, WebP/JPEG)
+    │   ├── itemMatcher.ts                  # ACR inclusion & alias matching
+    │   ├── packageCatalog.ts               # Supabase ACR package loader
+    │   ├── sampleAudits.ts                 # Built-in hospital ISA fixtures
+    │   └── utils.ts                        # PHP currency formatting (formatPHP) & class utilities
+    ├── types/
+    │   └── audit.ts                        # Shared audit, OCR, eligibility & override TypeScript types
+    └── middleware.ts                       # SSR auth session refresh middleware
 ```
 
 ---
 
-## 🚀 Quick Start
+## Getting Started
 
-New collaborators can get up and running in under 5 minutes. For full instructions (including Supabase SQL setup and OAuth configuration), read **[docs/SETUP.md](./docs/SETUP.md)**.
+### Prerequisites
 
-```bash
-# 1. Install dependencies
-npm install
+- Node.js `>= 20`
+- A [Supabase](https://supabase.com/) project with the SQL migrations in `supabase/` applied
+- A Google Gemini API key
 
-# 2. Copy environment template and fill in your Supabase & Gemini keys
-cp .env.local.example .env.local
+### Installation & Local Development
 
-# 3. Run the development server
-npm run dev
-```
+1. **Install dependencies:**
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+   ```bash
+   npm install
+   ```
+
+2. **Configure environment variables:**
+
+   Copy `.env.local.example` to `.env.local` and supply values for:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `GEMINI_API_KEY`
+
+3. **Run the development server:**
+
+   ```bash
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+4. **Run verification checks:**
+
+   ```bash
+   npm run lint
+   npm run test
+   npx tsc --noEmit
+   ```
 
 ---
 
-## 📖 Documentation Links
+## Official Reference Portals
 
-* **[Collaborator Setup Guide (`docs/SETUP.md`)](./docs/SETUP.md)** — Environment variables, Supabase SQL migrations, and troubleshooting.
-* **[Implementation Roadmap (`docs/Implementation_Roadmap.md`)](./docs/Implementation_Roadmap.md)** — Full 6-week sprint architecture and schema design.
-* **[Week 2 Objectives (`docs/Week2_Objectives.md`)](./docs/Week2_Objectives.md)** — Document ingestion, client-side compression, and storage RLS.
-* **[Week 3 Objectives (`docs/Week3_Objectives.md`)](./docs/Week3_Objectives.md)** — Upcoming Gemini Vision OCR & PhilHealth matching engine tasks.
+- [PhilHealth Member Portal](https://memberinquiry.philhealth.gov.ph)
+- [Department of Health (DOH)](https://doh.gov.ph)
+- [National Commission of Senior Citizens (NCSC)](https://ncsc.gov.ph)
 
 ---
 
-## 🔒 Data Privacy & Compliance
+## Data Privacy & Disclaimer
 
-Designed in alignment with the **Philippine Data Privacy Act of 2012 (RA 10173)**. Uploaded statements of account are compressed locally in the browser and stored in a private, non-public Supabase bucket (`bill-uploads`) protected by strict user-isolated Row-Level Security (`auth.uid()`).
+BillLens PH is designed in alignment with the **Philippine Data Privacy Act of 2012 (RA 10173)**, with user-isolated Row-Level Security and private statement storage (`bill-uploads`). All audit breakdowns, case-rate estimates, and Billy responses are provided for hospital billing transparency and financial assistance navigation only, and do not constitute formal medical, legal, or official PhilHealth adjudication.

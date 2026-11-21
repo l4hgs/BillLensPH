@@ -13,7 +13,6 @@ import {
   Loader2,
   RotateCcw,
   Send,
-  ShieldAlert,
   ShieldCheck,
   Square,
   Trash2,
@@ -22,12 +21,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn, formatPHP } from "@/lib/utils";
 import type { AuditEngineResult } from "@/types/audit";
-
-export const STARTER_PROMPTS = [
-  "What documents do I need for the Malasakit Center?",
-  "Why is this laboratory test flagged yellow?",
-  "How much should PhilHealth cover for my doctor's PF?",
-] as const;
 
 export interface AuditCopilotDrawerProps {
   auditId: string;
@@ -307,9 +300,9 @@ export function AuditCopilotDrawer({
   // Coordinate mount/unmount with enter/exit transitions so backdrop dimming and slide/origin animations play smoothly
   useEffect(() => {
     if (isOpen) {
-      setShouldRender(true);
       let raf2 = 0;
       const raf1 = requestAnimationFrame(() => {
+        setShouldRender(true);
         raf2 = requestAnimationFrame(() => {
           setIsAnimatingOpen(true);
         });
@@ -320,11 +313,17 @@ export function AuditCopilotDrawer({
       };
     }
 
-    setIsAnimatingOpen(false);
-    const timer = window.setTimeout(() => {
-      setShouldRender(false);
-    }, 300);
-    return () => window.clearTimeout(timer);
+    let timer = 0;
+    const raf = requestAnimationFrame(() => {
+      setIsAnimatingOpen(false);
+      timer = window.setTimeout(() => {
+        setShouldRender(false);
+      }, 300);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
   }, [isOpen]);
 
   // Lock body scroll and focus input when drawer opens

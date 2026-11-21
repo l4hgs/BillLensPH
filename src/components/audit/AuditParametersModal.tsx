@@ -41,8 +41,11 @@ export function AuditParametersModal({
 
   useEffect(() => {
     if (!open) return;
-    setDraftPrivilege(privilege);
-    setDraftEligibility(eligibility);
+    const raf = requestAnimationFrame(() => {
+      setDraftPrivilege(privilege);
+      setDraftEligibility(eligibility);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [open, privilege, eligibility]);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { CheckCircle2, AlertTriangle, Wallet, ShieldCheck } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatPHP } from "@/lib/utils";
 import type { AuditTier, AuditedLineItem } from "@/types/audit";

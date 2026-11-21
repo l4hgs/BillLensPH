@@ -9,10 +9,7 @@ import React, {
 import Link from "next/link";
 import {
   AlertCircle,
-  AlertTriangle,
   ArrowLeft,
-  BedDouble,
-  Building2,
   Eye,
   EyeOff,
   Loader2,
@@ -20,8 +17,6 @@ import {
   Printer,
   RefreshCw,
   Save,
-  ShieldCheck,
-  Sparkles,
   Undo2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";

@@ -191,7 +191,7 @@ export function ChatbotBackgroundProvider({
       document.title = "💬 Billy is answering... - BillLens PH";
     } else if (status === "ready" && messages.length > 0) {
       if (document.hidden) {
-        setHasUnreadMessage(true);
+        queueMicrotask(() => setHasUnreadMessage(true));
         document.title = "✓ Billy answered! - BillLens PH";
       }
     }

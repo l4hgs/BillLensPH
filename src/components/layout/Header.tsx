@@ -160,9 +160,12 @@ export function Header() {
                 >
                   {avatarUrl && !avatarError ? (
                     <div className="relative shrink-0">
-                      <img
+                      <Image
                         src={avatarUrl}
                         alt={displayName}
+                        width={28}
+                        height={28}
+                        unoptimized
                         referrerPolicy="no-referrer"
                         onError={() => setAvatarError(true)}
                         className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200/80 shadow-2xs"

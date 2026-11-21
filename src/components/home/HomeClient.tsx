@@ -141,8 +141,8 @@ function ScrollReveal({
     if (!el) return;
 
     if (typeof IntersectionObserver === "undefined") {
-      setIsVisible(true);
-      return;
+      const raf = requestAnimationFrame(() => setIsVisible(true));
+      return () => cancelAnimationFrame(raf);
     }
 
     const observer = new IntersectionObserver(
@@ -387,7 +387,10 @@ export function HomeClient({ initialUser = null }: { initialUser?: User | null }
     heroH: number;
   } | null>(null);
   const lensMetricsRef = useRef(lensMetrics);
-  lensMetricsRef.current = lensMetrics;
+
+  useEffect(() => {
+    lensMetricsRef.current = lensMetrics;
+  }, [lensMetrics]);
 
   // Generate & cache 2D spherical convex dome displacement map before first paint
   useIsomorphicLayoutEffect(() => {

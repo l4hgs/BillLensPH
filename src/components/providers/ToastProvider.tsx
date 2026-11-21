@@ -63,7 +63,7 @@ function ToastRow({
   onDismiss: (id: string) => void;
 }) {
   const remainingRef = useRef<number>(item.duration);
-  const startedAtRef = useRef<number>(Date.now());
+  const startedAtRef = useRef<number>(0);
   const timerRef = useRef<number | null>(null);
 
   const clearTimer = useCallback(() => {

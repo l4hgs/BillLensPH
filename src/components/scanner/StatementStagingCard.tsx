@@ -29,7 +29,6 @@ interface StatementStagingCardProps {
   statusMessage: string;
   hospitalName: string;
   setHospitalName: (name: string) => void;
-  stagedAuditId: string | null;
   onUploadAndStage: () => void;
   onResetAll: () => void;
   isSeniorOrPwd?: boolean;
@@ -51,7 +50,6 @@ export function StatementStagingCard({
   statusMessage,
   hospitalName,
   setHospitalName,
-  stagedAuditId,
   onUploadAndStage,
   onResetAll,
   isSeniorOrPwd = false,

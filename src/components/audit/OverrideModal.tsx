@@ -152,7 +152,7 @@ export function OverrideModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-[2px] p-3 sm:p-4 transition-opacity duration-150"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/75 p-3 sm:p-4 transition-opacity duration-150 motion-reduce:transition-none"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -163,7 +163,7 @@ export function OverrideModal({
         aria-modal="true"
         aria-labelledby="override-title"
         onKeyDown={handleKeyDown}
-        className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white shadow-xl"
+        className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white shadow-xl"
       >
         <form onSubmit={handleSubmit} noValidate>
           <div className="sticky top-0 z-10 flex items-start justify-between gap-2.5 border-b border-slate-100 bg-white px-4 py-3">
