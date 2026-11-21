@@ -1,14 +1,6 @@
 "use client";
 
 import React from "react";
-import {
-  AlertTriangle,
-  Building2,
-  CheckCircle2,
-  FileText,
-  Scale,
-  ShieldCheck,
-} from "lucide-react";
 import { formatPHP } from "@/lib/utils";
 import { normalizeStatutoryDiscountType } from "@/lib/auditEngine";
 import type {
@@ -239,87 +231,77 @@ export function NegotiationBriefDocument({
   return (
     <article
       aria-label="Formal Hospital Billing Negotiation Brief"
-      className="rounded-2xl border border-[#CBD5E1] bg-white p-6 text-[#1E293B] shadow-soft sm:p-10 print:rounded-none print:border-0 print:p-0 print:shadow-none"
+      className="mx-auto max-w-4xl bg-white p-6 sm:p-10 rounded-2xl border border-slate-200/80 text-slate-900 print:max-w-none print:rounded-none print:border-0 print:p-0"
     >
-      {/* Top Document Letterhead */}
-      <header className="flex flex-col justify-between gap-4 border-b-2 border-[#1E293B] pb-5 sm:flex-row sm:items-start">
+      {/* Top Document Letterhead (No Decorative Icons, Crisp Reference Block) */}
+      <header className="flex flex-col justify-between gap-4 border-b-2 border-slate-900 pb-5 sm:flex-row sm:items-start">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-[#2563EB]">
-            <FileText className="h-4 w-4" />
-            <span>BillLens PH · Patient Financial Advocacy Brief</span>
-          </div>
-          <h1 className="text-lg font-black tracking-tight text-[#1E293B] sm:text-xl">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-[#2563EB]">
+            BillLens PH · Patient Financial Advocacy Brief
+          </p>
+          <h1 className="text-lg font-black tracking-tight text-slate-900 sm:text-xl">
             REQUEST FOR ITEMIZED BILLING RECONCILIATION
           </h1>
-          <p className="text-xs font-medium text-[#64748B]">
+          <p className="text-xs font-medium text-slate-500">
             PhilHealth All Case Rates (ACR) &amp; Statutory Benefit Verification
           </p>
         </div>
 
-        <div className="rounded-xl border border-[#CBD5E1] bg-[#F3F4F6] px-3.5 py-2.5 text-left sm:text-right print:bg-white">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+        <div className="text-left sm:text-right shrink-0">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             Audit Reference
           </p>
-          <p className="font-mono text-xs font-bold text-[#1E293B]">
+          <p className="font-mono text-xs font-bold text-slate-900 mt-0.5">
             #{audit.audit_id.slice(0, 12).toUpperCase()}
           </p>
-          <p className="mt-0.5 text-[11px] text-[#64748B]">
+          <p className="mt-0.5 text-[11px] text-slate-500">
             Date: {meta.preparedDate}
           </p>
         </div>
       </header>
 
-      {/* Recipient & Patient Metadata Grid */}
-      <section className="print-avoid-break my-5 grid grid-cols-1 gap-4 rounded-xl border border-[#CBD5E1] bg-[#F3F4F6]/60 p-4 text-xs sm:grid-cols-2 print:bg-white">
-        <div className="space-y-1.5">
-          <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#64748B]">
+      {/* Recipient & Patient Metadata Grid (Hairline Dividers, No Heavy Gray Box) */}
+      <section className="print-avoid-break my-5 grid grid-cols-1 gap-4 border-b border-slate-200/80 pb-5 text-xs sm:grid-cols-2 sm:gap-6 print:grid-cols-2 print:gap-6">
+        <div className="space-y-1">
+          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
             Addressed To
           </p>
-          <p className="font-bold text-[#1E293B]">
+          <p className="font-bold text-slate-900">
             Head of Billing &amp; PhilHealth Claims Section
           </p>
-          <p className="flex items-center gap-1.5 font-semibold text-[#1E293B]">
-            <Building2 className="h-3.5 w-3.5 shrink-0 text-[#2563EB]" />
-            <span>{audit.hospital_name}</span>
-          </p>
-          <p className="text-[11px] text-[#64748B]">
+          <p className="font-semibold text-slate-800">{audit.hospital_name}</p>
+          <p className="text-[11px] text-slate-500">
             Copy Furnished: Medical Social Service / Malasakit Center Desk
           </p>
         </div>
 
-        <div className="space-y-1 border-t border-[#CBD5E1] pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-          <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#64748B]">
+        <div className="space-y-1 border-t border-slate-200/80 pt-3 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 print:border-l print:border-t-0 print:pl-6 print:pt-0">
+          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
             Patient &amp; Statement Details
           </p>
           <p className="text-xs">
-            <span className="font-semibold text-[#64748B]">Patient Name: </span>
-            <span className="font-bold text-[#1E293B]">
+            <span className="font-medium text-slate-500">Patient Name: </span>
+            <span className="font-bold text-slate-900">
               {audit.patient_name || "Patient on Record"}
             </span>
           </p>
           <p className="text-xs">
-            <span className="font-semibold text-[#64748B]">
-              Statement / SOA #:{" "}
-            </span>
-            <span className="font-bold text-[#1E293B] font-mono">
+            <span className="font-medium text-slate-500">Statement / SOA #: </span>
+            <span className="font-bold text-slate-900 font-mono">
               {audit.statement_number || "Per Attached ISA"}
             </span>
           </p>
           {(admissionDate || dischargeDate) && (
             <p className="text-xs">
-              <span className="font-semibold text-[#64748B]">
-                Confinement Period:{" "}
-              </span>
-              <span className="font-semibold text-[#1E293B] font-mono tabular-nums">
+              <span className="font-medium text-slate-500">Confinement Period: </span>
+              <span className="font-semibold text-slate-900 font-mono tabular-nums">
                 {admissionDate || "—"} to {dischargeDate || "Present"}
               </span>
             </p>
           )}
           <p className="text-xs">
-            <span className="font-semibold text-[#64748B]">
-              Statutory Status:{" "}
-            </span>
-            <span className="font-bold text-[#1E293B]">
+            <span className="font-medium text-slate-500">Statutory Status: </span>
+            <span className="font-bold text-slate-900">
               {isPwd
                 ? "Person with Disability — PWD (RA 10754 / PDAO)"
                 : hasStatutoryPrivilege
@@ -331,76 +313,78 @@ export function NegotiationBriefDocument({
       </section>
 
       {/* Formal Salutation & Opening Statement */}
-      <section className="space-y-2 text-xs leading-relaxed text-[#1E293B]">
-        <p className="font-bold">Dear Billing &amp; PhilHealth Claims Officer,</p>
+      <section className="space-y-2 text-xs leading-relaxed text-slate-800">
+        <p className="font-bold text-slate-900">
+          Dear Billing &amp; PhilHealth Claims Officer,
+        </p>
         <p>
           Good day. On behalf of patient{" "}
-          <strong className="font-bold">
+          <strong className="font-bold text-slate-900">
             {audit.patient_name || "named above"}
           </strong>
           , we respectfully request an itemized review and reconciliation of our
           Statement of Account at{" "}
-          <strong className="font-bold">{audit.hospital_name}</strong> prior to
-          final settlement. Specifically, we kindly ask your office to verify the
-          bundled PhilHealth All Case Rates (ACR) coverage and statutory discount
-          computations summarized below:
+          <strong className="font-bold text-slate-900">{audit.hospital_name}</strong>{" "}
+          prior to final settlement. Specifically, we kindly ask your office to
+          verify the bundled PhilHealth All Case Rates (ACR) coverage and
+          statutory discount computations summarized below:
         </p>
       </section>
 
-      {/* Section 1: Executive Financial Summary */}
-      <section className="print-avoid-break mt-5 space-y-2.5">
-        <h2 className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#1E293B]">
-          <span>1. Executive Financial Audit Summary</span>
+      {/* Section 1: Executive Financial Summary (Full-Width Hairline Strip, Only Peso Figures Colored) */}
+      <section className="print-avoid-break mt-6 space-y-3">
+        <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
+          1. Executive Financial Audit Summary
         </h2>
 
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <div className="rounded-xl border border-[#CBD5E1] bg-white p-3">
-            <span className="block text-[10px] font-bold uppercase text-[#64748B]">
+        <div className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x print:divide-y-0 print:divide-x divide-slate-200/80 border-y border-slate-200/80 py-3.5 gap-3 sm:gap-0 print:gap-0">
+          <div className="pr-3 sm:pr-4">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Gross Billed
             </span>
-            <span className="mt-0.5 block text-sm font-black text-[#1E293B] sm:text-base font-mono tabular-nums">
+            <span className="mt-1 block text-base sm:text-lg font-black text-slate-900 font-mono tabular-nums whitespace-nowrap">
               {formatPHP(audit.gross_total)}
             </span>
-            <span className="text-[10px] text-[#64748B] tabular-nums">
+            <span className="text-[11px] text-slate-500 tabular-nums">
               {audit.line_items.length} line items
             </span>
           </div>
 
-          <div className="rounded-xl border border-[#CBD5E1] bg-white p-3">
-            <span className="block text-[10px] font-bold uppercase text-[#64748B]">
+          <div className="pl-3 sm:px-4">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               PhilHealth Benefit
             </span>
-            <span className="mt-0.5 block text-sm font-black text-[#2563EB] sm:text-base font-mono tabular-nums">
+            <span className="mt-1 block text-base sm:text-lg font-black text-[#2563EB] font-mono tabular-nums whitespace-nowrap">
               {formatPHP(audit.philhealth_coverage_total)}
             </span>
-            <span className="text-[10px] text-[#64748B]">
+            <span className="text-[11px] text-slate-500">
               {audit.detected_case_packages.length > 0
                 ? `Case Code ${audit.detected_case_packages.map((p) => p.code).join(", ")}`
                 : "ACR Case Rate"}
             </span>
           </div>
 
-          <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3">
-            <span className="block text-[10px] font-bold uppercase text-amber-800">
+          <div className="pt-3 sm:pt-0 pr-3 sm:px-4">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Requested Adjustment
             </span>
-            <span className="mt-0.5 block text-sm font-black text-amber-900 sm:text-base font-mono tabular-nums">
+            <span className="mt-1 block text-base sm:text-lg font-black text-amber-700 font-mono tabular-nums whitespace-nowrap">
               {formatPHP(potentialSavings)}
             </span>
-            <span className="text-[10px] text-amber-800 tabular-nums">
+            <span className="text-[11px] text-slate-500 tabular-nums">
               {reviewItems.length} flagged item
               {reviewItems.length === 1 ? "" : "s"}
             </span>
           </div>
 
-          <div className="rounded-xl border border-emerald-300 bg-emerald-50/60 p-3">
-            <span className="block text-[10px] font-bold uppercase text-emerald-800">
+          <div className="pt-3 sm:pt-0 pl-3 sm:pl-4">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Reconciled Balance
             </span>
-            <span className="mt-0.5 block text-sm font-black text-emerald-900 sm:text-base font-mono tabular-nums">
+            <span className="mt-1 block text-base sm:text-lg font-black text-emerald-700 font-mono tabular-nums whitespace-nowrap">
               {formatPHP(audit.fair_out_of_pocket)}
             </span>
-            <span className="text-[10px] text-emerald-800">
+            <span className="text-[11px] text-slate-500">
               vs. <span className="font-mono tabular-nums">{formatPHP(audit.actual_out_of_pocket)}</span> stated
             </span>
           </div>
@@ -408,28 +392,27 @@ export function NegotiationBriefDocument({
 
         {/* Matched PhilHealth Case Rate Breakdown */}
         {audit.detected_case_packages.length > 0 && (
-          <div className="rounded-xl border border-[#CBD5E1] bg-[#F3F4F6] p-3.5 text-xs print:bg-white">
-            <p className="font-bold text-[#1E293B]">
+          <div className="border-l-2 border-[#2563EB] pl-3.5 py-0.5 text-xs">
+            <p className="font-bold text-slate-900">
               Matched PhilHealth All Case Rate (ACR) Package Breakdown:
             </p>
-            <ul className="mt-1.5 space-y-1">
+            <ul className="mt-1 space-y-1">
               {audit.detected_case_packages.map((pkg) => (
                 <li
                   key={pkg.code}
                   className="flex flex-wrap items-center justify-between gap-2 text-xs"
                 >
-                  <span className="font-semibold text-[#1E293B]">
-                    <ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-[#2563EB]" />
+                  <span className="font-semibold text-slate-900">
                     {pkg.keyword} (Code:{" "}
                     <span className="font-mono font-bold">{pkg.code}</span>)
                   </span>
-                  <span className="text-[#64748B]">
+                  <span className="text-slate-500">
                     HCI Fee:{" "}
-                    <strong className="text-[#1E293B] font-mono tabular-nums">
+                    <strong className="text-slate-900 font-mono tabular-nums">
                       {formatPHP(pkg.hci_fee)}
                     </strong>{" "}
                     · Doctor PF Share:{" "}
-                    <strong className="text-[#1E293B] font-mono tabular-nums">
+                    <strong className="text-slate-900 font-mono tabular-nums">
                       {formatPHP(pkg.prof_fee)}
                     </strong>{" "}
                     · Total Case Rate:{" "}
@@ -446,33 +429,32 @@ export function NegotiationBriefDocument({
 
       {/* Section 2: Schedule of Flagged Line Items for Billing Review */}
       <section className="mt-6 space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-[#1E293B]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
             2. Itemized Schedule of Charges Requested for Reconciliation (
             {reviewItems.length})
           </h2>
-          <span className="text-[11px] font-semibold text-[#64748B]">
-            🟢 {coveredItems.length} Covered · 🟡 {reviewItems.length} To Review
-            · 🔴 {outOfPocketItems.length} Out-of-Pocket
+          <span className="text-[11px] font-medium text-slate-500">
+            {coveredItems.length} Covered · {reviewItems.length} To Review ·{" "}
+            {outOfPocketItems.length} Out-of-Pocket
           </span>
         </div>
 
         {reviewItems.length === 0 ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 text-xs text-emerald-900">
-            <p className="flex items-center gap-1.5 font-bold">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <div className="border-l-2 border-emerald-500 pl-3.5 py-1 text-xs">
+            <p className="font-bold text-slate-900">
               No Unbundled or Disputed Line Items Flagged
             </p>
-            <p className="mt-1 text-emerald-800">
+            <p className="mt-0.5 text-slate-600">
               All extracted line items on this statement align with matched
               PhilHealth case rate rules and applicable statutory discounts.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto print:overflow-visible rounded-xl border border-[#CBD5E1]">
+          <div className="overflow-x-auto print:overflow-visible border-y border-slate-200/80">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
-                <tr className="border-b border-[#CBD5E1] bg-[#F3F4F6] text-[10px] font-extrabold uppercase tracking-wider text-[#64748B] print:bg-white">
+                <tr className="border-b border-slate-200/80 bg-slate-50/70 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 print:bg-white">
                   <th className="px-3 py-2.5">#</th>
                   <th className="px-3 py-2.5">Line Item &amp; Basis for Inquiry</th>
                   <th className="px-3 py-2.5">Category</th>
@@ -482,7 +464,7 @@ export function NegotiationBriefDocument({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#CBD5E1]">
+              <tbody className="divide-y divide-slate-200/80">
                 {reviewItems.map((item, index) => (
                   <tr
                     key={item.id}
@@ -492,24 +474,23 @@ export function NegotiationBriefDocument({
                       pageBreakInside: "avoid",
                     }}
                   >
-                    <td className="px-3 py-2.5 font-mono text-[11px] font-bold text-[#64748B]">
+                    <td className="px-3 py-2.5 font-mono text-[11px] font-bold text-slate-500">
                       <div className="print-avoid-break">{index + 1}</div>
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="print-avoid-break">
-                        <p className="font-bold text-[#1E293B]">
+                        <p className="font-bold text-slate-900">
                           {item.description}
                         </p>
-                        <p className="mt-0.5 text-[11px] text-[#64748B]">
+                        <p className="mt-0.5 text-[11px] text-slate-500">
                           Qty: <span className="font-mono tabular-nums">{item.quantity}</span> × <span className="font-mono tabular-nums">{formatPHP(item.unit_price)}</span>
                           {item.matched_package_code
                             ? ` · Matched Package ${item.matched_package_code}`
                             : ""}
                         </p>
                         {item.flag_reason && (
-                          <p className="mt-1 flex items-start gap-1 text-[11px] font-medium text-amber-900">
-                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
-                            <span>{item.flag_reason}</span>
+                          <p className="mt-1 border-l-2 border-amber-400 pl-2.5 text-[11px] text-slate-600">
+                            {item.flag_reason}
                           </p>
                         )}
                       </div>
@@ -637,11 +618,10 @@ export function NegotiationBriefDocument({
         )}
       </section>
 
-      {/* Section 3: Statutory & PhilHealth Regulatory Basis */}
-      <section className="print-avoid-break mt-6 space-y-2 rounded-xl border border-[#CBD5E1] bg-[#F3F4F6]/60 p-4 text-xs print:bg-white">
-        <h2 className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#1E293B]">
-          <Scale className="h-3.5 w-3.5 text-[#2563EB]" />
-          <span>3. Applicable Statutory &amp; PhilHealth Circular Basis</span>
+      {/* Section 3: Statutory & PhilHealth Regulatory Basis (Clean Editorial Band, No Gray Box or Icons) */}
+      <section className="print-avoid-break mt-6 space-y-2 border-t border-slate-200/80 pt-5 text-xs">
+        <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
+          3. Applicable Statutory &amp; PhilHealth Circular Basis
         </h2>
 
         <ul className="list-disc space-y-1.5 pl-4 text-[11px] leading-relaxed text-[#1E293B]">
@@ -746,7 +726,7 @@ export function NegotiationBriefDocument({
           continued service to Filipino patients.
         </p>
 
-        <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2">
+        <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2 print:grid-cols-2">
           <div className="space-y-1">
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
               Respectfully Submitted By:

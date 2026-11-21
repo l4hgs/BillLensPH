@@ -514,8 +514,8 @@ export function runAuditEngine(
               ? "(VAT-exempt item)"
               : "(VAT-exempt hospital/medical service under NIRC Sec. 109(G))";
         flagReason = flagReason
-          ? `${flagReason} Also missing statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} (potential relief: ${formatPHP(missedRelief)}).`
-          : `Missing or incomplete statutory ${privilegeLabel} ${discountPct}% discount ${vatNote} under ${effectiveCitation} (potential relief: ${formatPHP(missedRelief)}).`;
+          ? `${flagReason} Also missing ${privilegeLabel} ${discountPct}% discount ${vatNote} (potential relief: ${formatPHP(missedRelief)}).`
+          : `Missing ${privilegeLabel} ${discountPct}% discount ${vatNote} per ${effectiveCitation} (potential relief: ${formatPHP(missedRelief)}).`;
 
         flags.push({
           type: "missing_statutory_discount",
@@ -766,7 +766,7 @@ export function runAuditEngine(
         type: "excess_hci_charge",
         severity: "high",
         title: "Under-Deducted PhilHealth Case Rate",
-        description: `Hospital deducted ${formatPHP(extracted.philhealth_total)}, but the official PhilHealth Circular rate for ${matchedPackages.map((p) => `${p.keyword} (${p.code})`).join(", ")} is ${formatPHP(totalPhilHealthRate)} (HCI: ${formatPHP(totalHciCap)} | PF: ${formatPHP(totalPfCap)}). Verify Claim Form 2 with the billing department.`,
+        description: `Deducted ${formatPHP(extracted.philhealth_total)} vs. official PhilHealth Circular rate of ${formatPHP(totalPhilHealthRate)} for ${matchedPackages.map((p) => `${p.keyword} (${p.code})`).join(", ")} (HCI: ${formatPHP(totalHciCap)} | PF: ${formatPHP(totalPfCap)}). Verify Claim Form 2 with billing.`,
         potential_savings: caseRateShortfall,
       });
     }

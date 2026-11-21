@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CheckCircle2, AlertTriangle, Wallet, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatPHP } from "@/lib/utils";
@@ -119,23 +119,53 @@ export function TrafficLightSummary({
 
   const totalAmount = stats.reduce((sum, s) => sum + s.amount, 0);
 
+  const tablistRef = useRef<HTMLDivElement | null>(null);
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [indicatorStyle, setIndicatorStyle] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const updateIndicator = () => {
+      const key = activeTier ?? "all";
+      const el = tabRefs.current[key];
+      if (!el) return;
+      setIndicatorStyle({
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+      });
+    };
+
+    updateIndicator();
+
+    const container = tablistRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(updateIndicator);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [activeTier, items.length]);
+
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-soft overflow-hidden">
-      {/* 1. Top Section: Key Financial Impact Metrics (Compact Left-to-Right 3-Col on Mobile & Desktop) */}
+    <div className="w-full space-y-3">
+      {/* 1. Top Section: Compact Full-Width Financial Impact Metrics (Stacked vertically on mobile) */}
       {grossTotal !== undefined && (
-        <div className="grid grid-cols-3 divide-x divide-slate-100 p-3 sm:p-5 gap-1 sm:gap-0">
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80 border-b border-slate-200/80 pb-3 sm:pb-3.5 gap-2.5 sm:gap-0 text-center sm:text-left">
           {/* Total Billed */}
-          <div className="pr-2 sm:pr-4 space-y-0.5 sm:space-y-1 min-w-0">
-            <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 block truncate">
+          <div className="pb-2.5 sm:pb-0 sm:pr-4 lg:pr-5 space-y-0.5 min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
               Total Billed
             </span>
-            <span className="text-xs sm:text-xl md:text-2xl font-black text-slate-900 block tracking-tight font-mono tabular-nums truncate">
+            <span className="text-lg sm:text-xl xl:text-2xl font-black text-slate-900 block tracking-tight font-mono tabular-nums whitespace-nowrap">
               {formatPHP(grossTotal)}
             </span>
             {actualOutOfPocket !== undefined && (
-              <span className="text-[10px] sm:text-xs text-slate-500 block leading-tight truncate">
-                <span className="hidden sm:inline">Hospital asks: </span>
-                <span className="sm:hidden">Asks: </span>
+              <span className="text-[11px] text-slate-500 block leading-tight">
+                Hospital asks:{" "}
                 <strong className="font-semibold text-slate-700 font-mono tabular-nums">
                   {formatPHP(actualOutOfPocket)}
                 </strong>
@@ -144,153 +174,137 @@ export function TrafficLightSummary({
           </div>
 
           {/* Potential Savings */}
-          <div className="px-2 sm:px-4 space-y-0.5 sm:space-y-1 min-w-0">
-            <span className="flex items-center gap-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-amber-600 truncate">
-              <AlertTriangle className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
-              <span className="hidden sm:inline truncate">Potential Savings</span>
-              <span className="sm:hidden truncate">Savings</span>
+          <div className="py-2.5 sm:py-0 sm:px-4 lg:px-5 space-y-0.5 min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+              Potential Savings
             </span>
-            <span className="text-xs sm:text-xl md:text-2xl font-black text-amber-600 block tracking-tight font-mono tabular-nums truncate">
+            <span className="text-lg sm:text-xl xl:text-2xl font-black text-amber-700 block tracking-tight font-mono tabular-nums whitespace-nowrap">
               {formatPHP(potentialSavings)}
             </span>
-            <span className="text-[10px] sm:text-xs text-amber-700/80 block leading-tight truncate">
-              <span className="hidden sm:inline">Unbundled &amp; missed discounts</span>
-              <span className="sm:hidden">Discounts &amp; ACR</span>
+            <span className="text-[11px] text-slate-500 block leading-tight">
+              Discounts &amp; ACR
             </span>
           </div>
 
           {/* Fair Balance Due */}
-          <div className="pl-2 sm:pl-4 space-y-0.5 sm:space-y-1 min-w-0">
-            <span className="flex items-center gap-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-emerald-600 truncate">
-              <ShieldCheck className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
-              <span className="hidden sm:inline truncate">Fair Balance Due</span>
-              <span className="sm:hidden truncate">Fair Balance</span>
+          <div className="pt-2.5 sm:pt-0 sm:pl-4 lg:pl-5 space-y-0.5 min-w-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+              Fair Balance Due
             </span>
-            <span className="text-xs sm:text-xl md:text-2xl font-black text-emerald-600 block tracking-tight font-mono tabular-nums truncate">
+            <span className="text-lg sm:text-xl xl:text-2xl font-black text-emerald-700 block tracking-tight font-mono tabular-nums whitespace-nowrap">
               {formatPHP(fairOutOfPocket ?? (grossTotal - potentialSavings))}
             </span>
-            <span className="text-[10px] sm:text-xs text-emerald-700/80 block leading-tight truncate">
-              <span className="hidden sm:inline">Estimated fair out-of-pocket</span>
-              <span className="sm:hidden">Est. fair due</span>
+            <span className="text-[11px] text-slate-500 block leading-tight">
+              Est. fair out-of-pocket
             </span>
           </div>
         </div>
       )}
 
-      {/* 2. Middle Section: Slim Proportional Visual Progress Bar */}
-      <div className="px-3 sm:px-5 pt-0.5 pb-2.5 sm:pt-1 sm:pb-3.5">
-        <div
-          className="flex h-1.5 sm:h-2 w-full overflow-hidden rounded-full bg-slate-100 shadow-inner"
-          role="img"
-          aria-label={`Bill breakdown: ${stats
-            .map((s) => `${TIER_META[s.tier].label} ${s.count} items`)
-            .join(", ")}`}
-        >
-          {totalAmount > 0 &&
-            stats.map((s) =>
-              s.amount > 0 ? (
-                <div
-                  key={s.tier}
-                  className={cn("h-full transition-all", TIER_META[s.tier].bar)}
-                  style={{ width: `${(s.amount / totalAmount) * 100}%` }}
-                />
-              ) : null
-            )}
-        </div>
+      {/* 2. Slim Proportional Visual Progress Bar */}
+      <div
+        className="flex h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
+        role="img"
+        aria-label={`Bill breakdown: ${stats
+          .map((s) => `${TIER_META[s.tier].label} ${s.count} items`)
+          .join(", ")}`}
+      >
+        {totalAmount > 0 &&
+          stats.map((s) =>
+            s.amount > 0 ? (
+              <div
+                key={s.tier}
+                className={cn("h-full transition-all", TIER_META[s.tier].bar)}
+                style={{ width: `${(s.amount / totalAmount) * 100}%` }}
+              />
+            ) : null
+          )}
       </div>
 
-      {/* 3. Bottom Section: Interactive Line-Item Triage Filter Strip (Left-to-Right 3-Col on Mobile & Desktop) */}
-      <div className="p-2.5 sm:p-4 bg-slate-50/50 border-t border-slate-100">
-        <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
-          {stats.map(({ tier, count, amount }) => {
-            const meta = TIER_META[tier];
-            const isActive = activeTier === tier;
-            return (
-              <button
-                key={tier}
-                type="button"
-                aria-pressed={isActive}
-                onClick={() => onSelectTier(isActive ? null : tier)}
-                className={cn(
-                  "group relative flex flex-col justify-between p-2 sm:p-3 rounded-xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-w-0",
-                  isActive
-                    ? "bg-white border-blue-500 shadow-xs ring-2 ring-blue-500/20"
-                    : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-2xs"
-                )}
-              >
-                {/* Row 1: Icon & Count Badge */}
-                <div className="flex items-center justify-between w-full gap-1">
-                  <span
-                    className={cn(
-                      "flex h-5 w-5 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded-md transition-colors",
-                      isActive ? meta.iconWrap : "bg-slate-100 text-slate-600 group-hover:" + meta.iconWrap
-                    )}
-                  >
-                    <meta.Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                  </span>
-                  <span
-                    className={cn(
-                      "px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold font-mono tabular-nums shrink-0",
-                      isActive
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-slate-100 text-slate-600 group-hover:bg-slate-200/80"
-                    )}
-                  >
-                    {count}
-                    <span className="hidden sm:inline">
-                      {" "}
-                      {count === 1 ? "item" : "items"}
-                    </span>
-                  </span>
-                </div>
-
-                {/* Row 2: Full Title Label */}
-                <div className="mt-1.5 sm:mt-2 min-w-0">
-                  <span className="text-[11px] sm:text-xs font-bold text-slate-800 block leading-tight">
-                    {meta.label}
-                  </span>
-                </div>
-
-                {/* Row 3: Amount & Filter Cue */}
-                <div className="flex items-baseline justify-between w-full mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-slate-100/90 gap-1">
-                  <span className="text-[11px] sm:text-sm font-black text-slate-900 tracking-tight font-mono tabular-nums truncate">
-                    {formatPHP(amount)}
-                  </span>
-                  {isActive ? (
-                    <span className="text-[9px] sm:text-[10px] font-bold text-blue-600 shrink-0">
-                      <span className="hidden sm:inline">Filtering </span>✓
-                    </span>
-                  ) : (
-                    <span className="hidden sm:inline text-[10px] font-semibold text-slate-400 group-hover:text-blue-600 transition-colors shrink-0">
-                      Filter →
-                    </span>
+      {/* 3. Merged Single-Row Interactive Breakdown & Filter Tabs (Sliding Indicator, Fixed Button Size) */}
+      <div
+        ref={tablistRef}
+        role="tablist"
+        aria-label="Filter line items by audit tier"
+        className="relative grid grid-cols-2 lg:grid-cols-4 gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60"
+      >
+        {indicatorStyle && (
+          <div
+            aria-hidden="true"
+            className="absolute rounded-lg bg-white border border-slate-200/80 shadow-xs pointer-events-none z-0 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+            style={{
+              left: `${indicatorStyle.left}px`,
+              top: `${indicatorStyle.top}px`,
+              width: `${indicatorStyle.width}px`,
+              height: `${indicatorStyle.height}px`,
+            }}
+          />
+        )}
+        {(
+          [
+            {
+              id: null,
+              label: "All",
+              count: items.length,
+              amount: totalAmount,
+              dot: null,
+            },
+            ...TIER_ORDER.map((tier) => {
+              const found = stats.find((s) => s.tier === tier);
+              return {
+                id: tier,
+                label: TIER_META[tier].label,
+                count: found?.count ?? 0,
+                amount: found?.amount ?? 0,
+                dot: TIER_META[tier].bar,
+              };
+            }),
+          ] as const
+        ).map((tab) => {
+          const isSelected = activeTier === tab.id;
+          const key = tab.id ?? "all";
+          return (
+            <button
+              key={tab.label}
+              ref={(el) => {
+                tabRefs.current[key] = el;
+              }}
+              type="button"
+              role="tab"
+              aria-selected={isSelected}
+              onClick={() => onSelectTier(tab.id)}
+              className={cn(
+                "relative z-10 min-h-[46px] sm:min-h-[54px] px-2.5 sm:px-3 py-1.5 rounded-lg border border-transparent text-left transition-colors duration-200 ease-out motion-reduce:transition-none cursor-pointer flex flex-col justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]",
+                isSelected
+                  ? "text-slate-900"
+                  : "text-slate-600 hover:text-slate-900"
+              )}
+            >
+              <div className="flex items-center justify-between gap-1.5 w-full">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold truncate">
+                  {tab.dot && (
+                    <span className={cn("h-2 w-2 rounded-full shrink-0", tab.dot)} />
                   )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                  <span className="truncate">{tab.label}</span>
+                </span>
+                <span
+                  className={cn(
+                    "text-[10px] font-mono font-bold tabular-nums px-1.5 py-0.2 rounded-full shrink-0",
+                    isSelected
+                      ? "bg-slate-100 text-slate-800"
+                      : "bg-slate-200/60 text-slate-500"
+                  )}
+                >
+                  {tab.count}
+                </span>
+              </div>
+              <span className="text-xs font-black text-slate-900 font-mono tabular-nums mt-0.5 whitespace-nowrap">
+                {formatPHP(tab.amount)}
+              </span>
+            </button>
+          );
+        })}
       </div>
-
-      {/* Active Filter Indicator Bar */}
-      {activeTier && (
-        <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 bg-blue-50/90 border-t border-blue-100/80 text-xs text-blue-900">
-          <span className="flex items-center gap-1.5 font-medium">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-pulse" />
-            Filtering by <strong>{TIER_META[activeTier].label}</strong> (
-            {stats.find((s) => s.tier === activeTier)?.count || 0}{" "}
-            {(stats.find((s) => s.tier === activeTier)?.count ?? 0) === 1 ? "item" : "items"})
-          </span>
-          <button
-            type="button"
-            onClick={() => onSelectTier(null)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-blue-200/80 text-[11px] font-bold text-blue-700 shadow-2xs hover:bg-blue-100/60 hover:text-blue-900 transition-colors cursor-pointer"
-          >
-            <span>Show all items</span>
-            <span aria-hidden="true">✕</span>
-          </button>
-        </div>
-      )}
     </div>
   );
 }

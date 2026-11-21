@@ -19,19 +19,47 @@ export function Header() {
   useEffect(() => {
     const supabase = createClient();
 
+    const syncAdminHint = async (authUser: User | null) => {
+      if (!authUser) {
+        try {
+          localStorage.setItem("billlens_is_admin", "0");
+        } catch {
+          // Ignore storage access errors
+        }
+        return;
+      }
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", authUser.id)
+          .maybeSingle();
+        localStorage.setItem(
+          "billlens_is_admin",
+          data?.role === "admin" ? "1" : "0"
+        );
+      } catch {
+        // Ignore network/storage errors
+      }
+    };
+
     supabase.auth
       .getSession()
       .then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
+        const nextUser = session?.user ?? null;
+        setUser(nextUser);
         setAvatarError(false);
+        void syncAdminHint(nextUser);
       })
       .catch(() => {});
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
       setAvatarError(false);
+      void syncAdminHint(nextUser);
     });
 
     return () => {
@@ -54,16 +82,16 @@ export function Header() {
   return (
     <header className="no-print print:hidden sticky top-0 z-40 bg-white/40 backdrop-blur-xl backdrop-saturate-150 border-b border-slate-200/50 py-2.5 transition-all shadow-[0_1px_3px_0_rgba(15,23,42,0.02)]">
       <div className="w-full max-w-none px-4 sm:px-6 lg:px-10 xl:px-14 flex items-center justify-between gap-3">
-        {/* Left branding: Whole Official Logo Header (Minimized) */}
+        {/* Left branding: Whole Official Logo Header (10% smaller with padding) */}
         <div className="flex items-center shrink-0">
-          <Link href="/" className="flex items-center group">
+          <Link href="/" className="flex items-center group p-1.5 sm:p-2">
             <Image
               src="/logo-header.png"
               alt="BillLens PH"
-              width={125}
-              height={41}
-              className="h-6 sm:h-7 w-auto object-contain group-hover:scale-[1.02] transition-transform"
-              style={{ width: "auto", height: "auto" }}
+              width={122}
+              height={40}
+              className="h-7 sm:h-8 w-auto object-contain group-hover:scale-[1.02] transition-transform"
+              style={{ width: "auto" }}
               priority
             />
             <span className="sr-only">BillLens PH</span>
@@ -139,7 +167,6 @@ export function Header() {
                         onError={() => setAvatarError(true)}
                         className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200/80 shadow-2xs"
                       />
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" />
                     </div>
                   ) : (
                     <div className="relative shrink-0">
@@ -148,24 +175,18 @@ export function Header() {
                           <UserIcon className="w-3.5 h-3.5" />
                         )}
                       </span>
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" />
                     </div>
                   )}
-                  <div className="hidden sm:flex flex-col text-left leading-none">
-                    <span className="text-xs font-semibold text-slate-800 group-hover:text-slate-900 max-w-[120px] truncate tracking-[-0.01em]">
-                      {displayName}
-                    </span>
-                    <span className="text-[10px] font-medium text-slate-400 mt-0.5 tracking-tight">
-                      Account
-                    </span>
-                  </div>
+                  <span className="hidden sm:inline-block text-xs font-semibold text-slate-800 group-hover:text-slate-900 max-w-[120px] truncate tracking-[-0.01em]">
+                    {displayName}
+                  </span>
                 </Link>
               );
             })()
           ) : (
             <Link
               href="/auth"
-              className="inline-flex items-center gap-2 pl-2 pr-3.5 py-1.5 rounded-full bg-[#0F172A]/90 hover:bg-[#0F172A] backdrop-blur-sm text-white text-xs font-semibold shadow-xs hover:shadow transition-all duration-200 border border-slate-900/80 group"
+              className="inline-flex items-center gap-2 pl-2 pr-3.5 py-1.5 rounded-full bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-semibold shadow-xs hover:shadow transition-all duration-200 ring-1 ring-slate-900/10 group"
               title="Sign in"
             >
               <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">

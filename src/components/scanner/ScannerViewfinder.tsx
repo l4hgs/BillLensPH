@@ -89,17 +89,17 @@ export function ScannerViewfinder({
             }
           }}
           className={cn(
-            "group relative w-full rounded-3xl border-2 border-dashed transition-all duration-200 p-8 sm:p-12 text-center cursor-pointer select-none",
+            "group relative w-full rounded-3xl border-2 border-dashed transition-all duration-200 motion-reduce:transition-none px-5 py-7 sm:p-10 md:p-12 text-center cursor-pointer select-none",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2",
             isDragging
-              ? "border-[#2563EB] bg-blue-50/70 ring-4 ring-[#2563EB]/15 scale-[1.005]"
+              ? "border-[#2563EB] bg-blue-50/70 ring-4 ring-[#2563EB]/15 scale-[1.005] motion-reduce:scale-100"
               : "border-slate-300 bg-white hover:border-[#2563EB]/70 hover:bg-slate-50/70 shadow-soft"
           )}
         >
           {/* Central Icon */}
           <div
             className={cn(
-              "w-16 h-16 sm:w-18 sm:h-18 rounded-2xl mx-auto flex items-center justify-center mb-4 transition-all duration-200 shadow-xs",
+              "w-16 h-16 sm:w-18 sm:h-18 rounded-2xl mx-auto flex items-center justify-center mb-4 transition-all duration-200 shadow-xs animate-scan-float",
               isDragging
                 ? "bg-[#2563EB] text-white scale-110"
                 : "bg-blue-50/80 border border-blue-200/80 text-[#2563EB] group-hover:scale-105"
@@ -120,7 +120,7 @@ export function ScannerViewfinder({
 
           {/* Initial Upload Button Cluster (Dominant when empty) */}
           <div
-            className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-sm mx-auto"
+            className="mt-5 sm:mt-6 flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-3 w-full max-w-sm mx-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -186,19 +186,19 @@ export function ScannerViewfinder({
       className="w-full space-y-3"
     >
       {/* Staged Pages Section Header */}
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xs sm:text-sm font-bold text-slate-900">
+      <div className="flex items-center justify-between gap-2 px-0.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+          <h3 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
             {isAuditComplete
               ? `Audited Statement (${pages.length} ${pages.length === 1 ? "page" : "pages"})`
-              : `Staged Statement Pages (${pages.length})`}
+              : `Staged Pages (${pages.length})`}
           </h3>
           <span
             className={cn(
-              "text-[11px] font-medium px-2 py-0.5 rounded-full",
+              "text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap shrink-0",
               isAuditComplete
                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                : "bg-slate-100 text-slate-500"
+                : "bg-slate-100 text-slate-600"
             )}
           >
             {isAuditComplete ? "Audited" : "Ready for audit"}
@@ -211,9 +211,9 @@ export function ScannerViewfinder({
             type="button"
             disabled={isBusy}
             onClick={onBrowseFiles}
-            className="text-xs font-semibold text-slate-600 hover:text-[#2563EB] inline-flex items-center gap-1 cursor-pointer disabled:opacity-40 min-h-[44px] px-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded-lg"
+            className="text-xs font-semibold text-slate-600 hover:text-[#2563EB] inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40 min-h-[44px] px-1.5 -my-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded-lg"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5 shrink-0" />
             <span>Add another page</span>
           </button>
         )}
@@ -249,7 +249,7 @@ export function ScannerViewfinder({
               )}
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
                   {/* File Type Pill */}
                   <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0">
                     <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -258,8 +258,8 @@ export function ScannerViewfinder({
                   </div>
 
                   {/* Filename & Size Metadata */}
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-semibold text-slate-900 truncate max-w-[200px] sm:max-w-md">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
                       {page.originalName}
                     </p>
                     <p className="text-[11px] text-slate-500 mt-0.5">

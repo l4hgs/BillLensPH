@@ -17,7 +17,6 @@ import {
   ShieldCheck,
   Square,
   Trash2,
-  User,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -178,6 +177,8 @@ export function AuditCopilotDrawer({
   auditResult,
 }: AuditCopilotDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [shouldRender, setShouldRender] = useState(false);
+  const [isAnimatingOpen, setIsAnimatingOpen] = useState(false);
   const [input, setInput] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -303,6 +304,29 @@ export function AuditCopilotDrawer({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isStreaming]);
 
+  // Coordinate mount/unmount with enter/exit transitions so backdrop dimming and slide/origin animations play smoothly
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          setIsAnimatingOpen(true);
+        });
+      });
+      return () => {
+        cancelAnimationFrame(raf1);
+        cancelAnimationFrame(raf2);
+      };
+    }
+
+    setIsAnimatingOpen(false);
+    const timer = window.setTimeout(() => {
+      setShouldRender(false);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [isOpen]);
+
   // Lock body scroll and focus input when drawer opens
   useEffect(() => {
     if (!isOpen) return;
@@ -352,30 +376,37 @@ export function AuditCopilotDrawer({
 
   return (
     <>
-      {/* Responsive Floating Billy Button with Blue Background & Butter-Smooth CSS Grid Expand */}
-      <div className="no-print print:hidden fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40">
+      {/* Responsive Floating Billy Button: Shows "Ask Billy" by default on mobile/tablet, expands on hover on desktop */}
+      <div
+        className={cn(
+          "no-print print:hidden fixed bottom-24 lg:bottom-6 right-4 lg:right-6 z-40 transition-all duration-200 ease-out motion-reduce:transition-none",
+          isOpen
+            ? "scale-75 opacity-0 pointer-events-none"
+            : "scale-100 opacity-100"
+        )}
+      >
         <button
           type="button"
           onClick={() => setIsOpen(true)}
           aria-label="Ask Billy AI Assistant"
-          className="group relative flex cursor-pointer items-center rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] h-12 sm:h-13 text-white shadow-xl shadow-blue-600/35 ring-2 ring-white/25 transition-colors duration-200 active:scale-95"
+          className="group relative flex cursor-pointer items-center rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] h-11 sm:h-12 lg:h-13 text-white shadow-xl shadow-blue-600/35 ring-2 ring-white/25 transition-colors duration-200 active:scale-95"
         >
-          {/* Static Anchor Icon - perfectly centered in the 48px/52px circle */}
-          <div className="flex h-12 w-12 sm:h-13 sm:w-13 items-center justify-center shrink-0">
+          {/* Static Anchor Icon */}
+          <div className="flex h-11 w-11 sm:h-12 sm:w-12 lg:h-13 lg:w-13 items-center justify-center shrink-0">
             <Image
               src="/billy-white.png"
               alt="Billy"
               width={24}
               height={24}
-              className="w-5 h-5 sm:w-5.5 sm:h-5.5 object-contain transition-transform duration-200 group-hover:scale-105 drop-shadow-xs"
+              className="w-5 h-5 lg:w-5.5 lg:h-5.5 object-contain transition-transform duration-200 group-hover:scale-105 drop-shadow-xs"
               style={{ width: "auto", height: "auto" }}
             />
           </div>
 
-          {/* Fractional Grid Width Container: 0fr -> 1fr on hover (smooth bidirectional expansion & collapse) */}
-          <div className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-out">
+          {/* Always visible on mobile/tablet (< lg); hover-expand on desktop (lg+) */}
+          <div className="grid grid-cols-[1fr] lg:grid-cols-[0fr] lg:group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-300 ease-out">
             <div className="overflow-hidden whitespace-nowrap">
-              <span className="block pr-4 sm:pr-4.5 pl-0.5 text-xs sm:text-sm font-bold tracking-tight text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 group-hover:delay-100">
+              <span className="block pr-3.5 sm:pr-4 lg:pr-4.5 pl-0.5 text-xs lg:text-sm font-bold tracking-tight text-white opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity duration-200 lg:group-hover:delay-100">
                 Ask Billy
               </span>
             </div>
@@ -390,12 +421,15 @@ export function AuditCopilotDrawer({
         </button>
       </div>
 
-      {/* Slide-over / Bottom Sheet Drawer */}
-      {isOpen &&
+      {/* Slide-over / Bottom Sheet Drawer originating from bottom-right FAB */}
+      {shouldRender &&
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="fixed inset-0 z-[110] flex items-end justify-end bg-slate-900/40 backdrop-blur-xs transition-opacity duration-150 sm:items-stretch"
+            className={cn(
+              "no-print print:hidden fixed inset-0 z-[110] flex items-end justify-end bg-slate-950/75 transition-opacity duration-300 ease-out motion-reduce:transition-none sm:items-stretch",
+              isAnimatingOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) setIsOpen(false);
             }}
@@ -404,47 +438,29 @@ export function AuditCopilotDrawer({
               role="dialog"
               aria-modal="true"
               aria-labelledby="chatbot-drawer-title"
-              className="relative flex h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl border-t border-slate-200/80 bg-white shadow-2xl sm:h-full sm:max-w-lg sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0"
+              className={cn(
+                "relative flex h-[88dvh] w-full flex-col overflow-hidden rounded-t-2xl border-t border-slate-200 bg-white shadow-2xl sm:h-full sm:max-w-lg sm:rounded-l-2xl sm:rounded-tr-none sm:border-l sm:border-t-0 origin-bottom-right transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                isAnimatingOpen
+                  ? "translate-x-0 translate-y-0 scale-100 opacity-100"
+                  : "translate-y-12 translate-x-4 scale-[0.86] opacity-0 sm:translate-y-8 sm:translate-x-10 sm:scale-[0.88]"
+              )}
             >
-              {/* Clean Light Header matching AI Chatbot Page */}
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white px-4 py-3 sm:px-5">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-200/80 bg-blue-50/70 p-1 shadow-2xs">
-                    <Image
-                      src="/billy.png"
-                      alt="Billy Logo"
-                      width={28}
-                      height={28}
-                      className="w-6 h-6 object-contain"
-                      style={{ width: "auto", height: "auto" }}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h2
-                        id="chatbot-drawer-title"
-                        className="text-sm font-bold tracking-tight text-slate-900 truncate"
-                      >
-                        AI Chatbot
-                      </h2>
-                      <span className="rounded-full bg-blue-50 border border-blue-200/80 px-2 py-0.5 text-[10px] font-bold text-blue-700 shrink-0">
-                        Billy
-                      </span>
-                    </div>
-                    <p className="line-clamp-1 text-[11px] text-slate-500">
-                      {auditResult.hospital_name} ·{" "}
-                      <span className="font-mono tabular-nums">{formatPHP(auditResult.gross_total)}</span>
-                    </p>
-                  </div>
-                </div>
+              {/* Minimal Top Bar */}
+              <div className="shrink-0 flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white px-4 py-2.5 sm:px-5">
+                <h2
+                  id="chatbot-drawer-title"
+                  className="text-sm font-extrabold tracking-tight text-slate-900"
+                >
+                  Ask Billy
+                </h2>
 
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
                   aria-label="Close Chatbot drawer"
-                  className="cursor-pointer rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 shrink-0"
+                  className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center cursor-pointer rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
@@ -452,27 +468,24 @@ export function AuditCopilotDrawer({
               <div
                 ref={scrollContainerRef}
                 className={cn(
-                  "flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-5 scroll-smooth",
-                  messages.length === 0 ? "flex flex-col" : "space-y-3.5"
+                  "flex-1 min-h-0 overflow-y-auto scrollbar-none p-4 sm:p-5 scroll-smooth",
+                  messages.length === 0 ? "flex flex-col" : "space-y-4"
                 )}
               >
                 {/* Empty State matching AI Chatbot Page */}
                 {messages.length === 0 && (
-                  <div className="w-full mx-auto my-auto flex flex-col items-center text-center space-y-3 sm:space-y-4 py-1 sm:py-2 transition-opacity duration-150">
-                    <div className="relative flex items-center justify-center shrink-0">
-                      <Image
-                        src="/billy.png"
-                        alt="Billy Logo"
-                        width={64}
-                        height={64}
-                        className="w-14 h-14 sm:w-16 sm:h-16 object-contain drop-shadow-sm hover:scale-105 transition-transform"
-                        style={{ width: "auto", height: "auto" }}
-                      />
-                    </div>
+                  <div className="w-full mx-auto my-auto flex flex-col items-center text-center space-y-3.5 sm:space-y-4 py-2">
+                    <Image
+                      src="/billy.png"
+                      alt="Billy"
+                      width={96}
+                      height={96}
+                      className="w-[84px] h-[84px] sm:w-24 sm:h-24 object-contain"
+                    />
 
                     <div className="space-y-1">
-                      <h3 className="text-base font-bold tracking-tight text-slate-900">
-                        Kumusta! I’m Billy, your hospital billing assistant.
+                      <h3 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900">
+                        Kumusta! I&apos;m Billy, your billing navigator.
                       </h3>
                       <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
                         Statement from{" "}
@@ -484,34 +497,27 @@ export function AuditCopilotDrawer({
                       </p>
                     </div>
 
-                    {/* Interactive Starter Cards matching AI Chatbot Page */}
-                    <div className="w-full grid grid-cols-1 gap-2.5 pt-1 text-left">
+                    {/* Hairline-Divided Starter Prompts matching AI Chatbot Page */}
+                    <div className="w-full divide-y divide-slate-200/80 border-y border-slate-200/80 text-left">
                       {commonQuestions.map((q, idx) => (
                         <button
                           key={idx}
                           type="button"
                           disabled={isStreaming}
                           onClick={() => handleSendQuery(q.prompt)}
-                          className="group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white hover:bg-blue-50/40 p-3.5 text-left shadow-2xs transition-all hover:border-blue-400 hover:shadow-soft active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                          className="group w-full min-h-[44px] py-3 px-2 flex items-center justify-between gap-3 text-left hover:bg-slate-50/80 transition-colors motion-reduce:transition-none disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded-lg"
                         >
-                          <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-slate-50 group-hover:bg-white border border-slate-200/80 flex items-center justify-center shrink-0 shadow-2xs transition-colors">
-                              {q.icon}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
-                                  {q.title}
-                                </span>
-                                <span className="text-xs text-slate-300 group-hover:text-blue-500 transition-colors shrink-0">
-                                  →
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                                {q.desc}
-                              </p>
-                            </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-900 group-hover:text-[#2563EB] transition-colors">
+                              {q.title}
+                            </p>
+                            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                              {q.desc}
+                            </p>
                           </div>
+                          <span className="text-xs text-slate-400 group-hover:text-[#2563EB] shrink-0">
+                            →
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -528,46 +534,28 @@ export function AuditCopilotDrawer({
                     <div
                       key={msg.id}
                       className={cn(
-                        "flex items-start gap-2.5",
-                        isUser ? "flex-row-reverse" : "flex-row"
+                        "flex items-start",
+                        isUser ? "justify-end" : "justify-start"
                       )}
                     >
                       <div
                         className={cn(
-                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-                          isUser
-                            ? "bg-[#1E293B] text-white"
-                            : "bg-blue-50 border border-blue-200/80 p-0.5 shadow-2xs"
-                        )}
-                      >
-                        {isUser ? (
-                          <User className="h-3.5 w-3.5" />
-                        ) : (
-                          <Image
-                            src="/billy.png"
-                            alt="Billy"
-                            width={20}
-                            height={20}
-                            className="w-4 h-4 object-contain"
-                            style={{ width: "auto", height: "auto" }}
-                          />
-                        )}
-                      </div>
-
-                      <div
-                        className={cn(
-                          "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs shadow-xs",
+                          "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed",
                           isUser
                             ? "rounded-tr-sm bg-[#2563EB] text-white"
-                            : "rounded-tl-sm border border-[#CBD5E1] bg-[#F3F4F6] text-[#1E293B]"
+                            : "rounded-tl-sm border border-slate-200/80 bg-white text-slate-900"
                         )}
                       >
                         {text ? (
                           <FormattedChatContent content={text} isUser={isUser} />
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 text-[#64748B]">
+                          <span
+                            role="status"
+                            aria-live="polite"
+                            className="inline-flex items-center gap-1.5 text-slate-500"
+                          >
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-[#2563EB]" />
-                            Checking Philippine billing &amp; subsidy rules...
+                            <span>Checking Philippine billing &amp; subsidy rules...</span>
                           </span>
                         )}
                       </div>
@@ -577,21 +565,15 @@ export function AuditCopilotDrawer({
 
                 {/* Loading indicator when request is submitted before first assistant chunk */}
                 {status === "submitted" && (
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 border border-blue-200/80 p-0.5 shadow-2xs">
-                      <Image
-                        src="/billy.png"
-                        alt="Billy"
-                        width={20}
-                        height={20}
-                        className="w-4 h-4 object-contain"
-                        style={{ width: "auto", height: "auto" }}
-                      />
-                    </div>
-                    <div className="rounded-2xl rounded-tl-sm border border-[#CBD5E1] bg-[#F3F4F6] px-3.5 py-2.5 text-xs text-[#64748B]">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-start justify-start"
+                  >
+                    <div className="rounded-2xl rounded-tl-sm border border-slate-200/80 bg-white px-3.5 py-2.5 text-xs text-slate-500">
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-[#2563EB]" />
-                        Preparing your financial navigation guide...
+                        <span>Preparing your financial navigation guide...</span>
                       </span>
                     </div>
                   </div>
@@ -601,12 +583,14 @@ export function AuditCopilotDrawer({
                 {error && (
                   <div
                     role="alert"
-                    className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+                    className="border-l-2 border-rose-500 bg-rose-50/70 pl-3.5 pr-3 py-2.5 text-xs text-rose-800"
                   >
                     <div className="flex items-start gap-2">
                       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
                       <div className="flex-1 space-y-1.5">
-                        <p className="font-bold">Could not reach AI Chatbot</p>
+                        <p className="font-bold text-rose-900">
+                          Could not reach AI Chatbot
+                        </p>
                         <p className="text-[11px] leading-relaxed">
                           {error.message ||
                             "Please check your connection or try again."}
@@ -623,10 +607,10 @@ export function AuditCopilotDrawer({
                               },
                             })
                           }
-                          className="h-7 px-2.5 text-[11px]"
+                          className="min-h-[36px] px-3 text-xs"
                         >
                           <RotateCcw className="h-3 w-3" />
-                          Retry
+                          <span>Retry</span>
                         </Button>
                       </div>
                     </div>
@@ -634,24 +618,17 @@ export function AuditCopilotDrawer({
                 )}
               </div>
 
-              {/* Input & Context Controls Area (Pinned to bottom, matching AI Chatbot Page) */}
-              <div className="border-t border-slate-200/80 bg-white p-3 sm:p-3.5 shrink-0 space-y-2.5">
-                {/* Top Toolbar: Statement Context Pill, Savings Badge & Clear Chat */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                    <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 truncate max-w-[230px]">
-                      <Building2 className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                      <span className="text-[10px] uppercase font-bold text-slate-400">
-                        Context:
-                      </span>
-                      <span className="truncate">
-                        {auditResult.hospital_name}
-                      </span>
-                    </div>
-
+              {/* Pinned Bottom Composer matching AI Chatbot Page */}
+              <div className="border-t border-slate-200/80 bg-white p-3 sm:p-4 shrink-0 space-y-2">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0 text-slate-600">
+                    <Building2 className="h-3.5 w-3.5 text-[#2563EB] shrink-0" />
+                    <span className="font-semibold truncate">
+                      {auditResult.hospital_name}
+                    </span>
                     {potentialSavings > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800 shrink-0">
-                        {formatPHP(potentialSavings)} savings
+                      <span className="text-[11px] font-semibold text-amber-700 shrink-0">
+                        · {formatPHP(potentialSavings)} savings
                       </span>
                     )}
                   </div>
@@ -660,16 +637,14 @@ export function AuditCopilotDrawer({
                     <button
                       type="button"
                       onClick={() => setShowClearConfirm(true)}
-                      className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-rose-600 shrink-0 px-2.5 py-1 rounded-full hover:bg-rose-50 transition-colors ml-auto"
-                      title="Clear conversation"
+                      className="inline-flex cursor-pointer items-center gap-1 min-h-[36px] px-2.5 rounded-full text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50/70 transition-colors shrink-0"
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-3.5 w-3.5" />
                       <span>Clear chat</span>
                     </button>
                   )}
                 </div>
 
-                {/* Input Form */}
                 <form
                   onSubmit={handleFormSubmit}
                   className="flex items-center gap-2"
@@ -679,9 +654,10 @@ export function AuditCopilotDrawer({
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask Billy about hospital bills, PhilHealth case rates, or medical discounts..."
+                    placeholder="Ask Billy about hospital bills, PhilHealth case rates, or discounts..."
+                    aria-label="Message Billy"
                     disabled={isStreaming}
-                    className="h-10 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#2563EB] focus:bg-white focus:outline-none disabled:opacity-60 transition-colors"
+                    className="min-h-[44px] flex-1 rounded-full border border-slate-200/90 bg-white px-4 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 disabled:opacity-60 transition-colors"
                   />
                   {isStreaming ? (
                     <Button
@@ -690,7 +666,7 @@ export function AuditCopilotDrawer({
                       size="sm"
                       onClick={() => stop()}
                       aria-label="Stop generating"
-                      className="h-10 shrink-0 rounded-full px-4 text-xs"
+                      className="min-h-[44px] shrink-0 rounded-full px-4 text-xs font-bold"
                     >
                       <Square className="h-3.5 w-3.5 fill-current" />
                       <span>Stop</span>
@@ -702,7 +678,7 @@ export function AuditCopilotDrawer({
                       size="sm"
                       disabled={!input.trim()}
                       aria-label="Send question"
-                      className="h-10 shrink-0 rounded-full px-5 text-xs font-bold"
+                      className="min-h-[44px] shrink-0 rounded-full px-5 text-xs font-bold"
                     >
                       <Send className="h-3.5 w-3.5" />
                       <span>Send</span>
@@ -710,56 +686,57 @@ export function AuditCopilotDrawer({
                   )}
                 </form>
 
-                <p className="mt-1 flex items-center justify-center gap-1 text-center text-[10px] text-slate-400">
-                  <ShieldAlert className="h-3 w-3 shrink-0" />
-                  <span>
-                    Disclaimer: Guidance is for hospital billing audit and
-                    financial assistance navigation only, not formal medical
-                    advice.
-                  </span>
+                <p className="text-center text-[10px] text-slate-400">
+                  Guidance is for hospital billing audit and financial assistance
+                  navigation only, not formal medical or legal advice.
                 </p>
               </div>
 
-              {/* Clear Chat Confirmation Dialog */}
+              {/* Clear Chat Confirmation Dialog (NO backdrop-blur, matching existing modals) */}
               {showClearConfirm && (
                 <div
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="drawer-clear-chat-title"
-                  className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
+                  className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4"
+                  onClick={() => setShowClearConfirm(false)}
                 >
-                  <div className="w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 shadow-xl space-y-3">
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0 shadow-2xs">
-                        <Trash2 className="w-4 h-4" />
-                      </div>
-                      <div className="space-y-0.5">
+                  <div
+                    className="animate-fade-slide-in motion-reduce:animate-none w-full max-w-sm rounded-2xl border border-slate-200/90 bg-white shadow-xl p-5 sm:p-6 space-y-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
                         <h3
                           id="drawer-clear-chat-title"
-                          className="text-xs font-bold text-slate-900"
+                          className="text-base font-extrabold tracking-tight text-slate-900"
                         >
                           Clear conversation?
                         </h3>
-                        <p className="text-[11px] text-slate-500 leading-snug">
-                          Delete all messages from this session.
+                        <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+                          This will remove all messages from this session.
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        aria-label="Close confirmation dialog"
+                        onClick={() => setShowClearConfirm(false)}
+                        className="min-w-[44px] min-h-[44px] -mt-2 -mr-2 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
 
-                    <div className="flex items-center justify-end gap-1.5 pt-1">
-                      <Button
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
                         type="button"
-                        variant="secondary"
-                        size="sm"
                         onClick={() => setShowClearConfirm(false)}
-                        className="rounded-full h-7 px-3 text-[11px] font-semibold"
+                        className="min-h-[44px] px-4 rounded-full border border-slate-200/90 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
                       >
                         Cancel
-                      </Button>
-                      <Button
+                      </button>
+                      <button
                         type="button"
-                        variant="primary"
-                        size="sm"
                         onClick={() => {
                           stop();
                           setMessages([]);
@@ -775,10 +752,10 @@ export function AuditCopilotDrawer({
                           }
                           setShowClearConfirm(false);
                         }}
-                        className="rounded-full h-7 px-3 text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white border-transparent"
+                        className="min-h-[44px] px-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
                       >
                         Clear Chat
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </div>

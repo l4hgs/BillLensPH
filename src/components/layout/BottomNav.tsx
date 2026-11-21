@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,7 +9,6 @@ import {
   Scan,
   FolderArchive,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useScanBackground } from "@/components/providers/ScanBackgroundProvider";
@@ -36,10 +36,10 @@ export function BottomNav() {
       icon: ShieldCheck,
     },
     {
-      label: "AI Chatbot",
-      shortLabel: "AI Chatbot",
+      label: "Chat",
+      shortLabel: "Chat",
       href: "/chatbot",
-      icon: Sparkles,
+      icon: null,
     },
   ];
 
@@ -71,12 +71,26 @@ export function BottomNav() {
               )}
             >
               <div className="relative flex items-center justify-center">
-                <Icon
-                  className={cn(
-                    "w-4 h-4 sm:w-3.5 sm:h-3.5 shrink-0 transition-colors",
-                    isActive ? "text-white" : "text-slate-500"
-                  )}
-                />
+                {Icon ? (
+                  <Icon
+                    className={cn(
+                      "w-4 h-4 sm:w-3.5 sm:h-3.5 shrink-0 transition-colors",
+                      isActive ? "text-white" : "text-slate-500"
+                    )}
+                  />
+                ) : (
+                  <Image
+                    src="/billy-nav.png"
+                    alt=""
+                    width={16}
+                    height={16}
+                    aria-hidden="true"
+                    className={cn(
+                      "w-4 h-4 sm:w-3.5 sm:h-3.5 object-contain shrink-0 transition-all",
+                      isActive && "brightness-0 invert"
+                    )}
+                  />
+                )}
                 {isScanningTab && (
                   <span className="sm:hidden absolute -top-0.5 -right-1 flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />

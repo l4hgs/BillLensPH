@@ -3,15 +3,18 @@
 import React from "react";
 import { ScanBackgroundProvider } from "./ScanBackgroundProvider";
 import { ChatbotBackgroundProvider } from "./ChatbotBackgroundProvider";
+import { ToastProvider } from "./ToastProvider";
 import { BackgroundScanToast } from "./BackgroundScanToast";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <ScanBackgroundProvider>
-      <ChatbotBackgroundProvider>
-        {children}
-        <BackgroundScanToast />
-      </ChatbotBackgroundProvider>
-    </ScanBackgroundProvider>
+    <ToastProvider>
+      <ScanBackgroundProvider>
+        <ChatbotBackgroundProvider>
+          {children}
+          <BackgroundScanToast />
+        </ChatbotBackgroundProvider>
+      </ScanBackgroundProvider>
+    </ToastProvider>
   );
 }

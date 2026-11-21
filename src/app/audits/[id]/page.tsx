@@ -13,10 +13,10 @@ import {
   ArrowLeft,
   BedDouble,
   Building2,
-  ChevronDown,
-  ChevronUp,
-  Columns2,
+  Eye,
+  EyeOff,
   Loader2,
+  Pencil,
   Printer,
   RefreshCw,
   Save,
@@ -27,8 +27,11 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AuditLineItemRow } from "@/components/audit/AuditLineItemRow";
+import { AuditDetailSkeleton } from "@/components/audit/AuditSkeletons";
 import { AuditChatbotDrawer } from "@/components/audit/AuditChatbotDrawer";
+import { AuditParametersModal } from "@/components/audit/AuditParametersModal";
 import { OverrideModal } from "@/components/audit/OverrideModal";
+import { useToast } from "@/components/providers/ToastProvider";
 import {
   SideBySideBillViewer,
   type BillImagePage,
@@ -101,8 +104,23 @@ export default function AuditStudioPage({
     useState<StatutoryDiscountType>("regular");
   const [eligibilitySnapshot, setEligibilitySnapshot] =
     useState<EligibilitySnapshot>(DEFAULT_ELIGIBILITY_SNAPSHOT);
-  const [showEligibilityDrawer, setShowEligibilityDrawer] = useState(false);
+  const toast = useToast();
+  const [showParamsModal, setShowParamsModal] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState("");
+
+  const openParamsModal = () => {
+    setShowParamsModal(true);
+  };
+
+  const handleApplyParamsModal = (
+    nextPrivilege: StatutoryDiscountType,
+    nextEligibility: EligibilitySnapshot
+  ) => {
+    setStatutoryDiscountType(nextPrivilege);
+    setEligibilitySnapshot(nextEligibility);
+    setShowParamsModal(false);
+    toast.success("Audit parameters updated");
+  };
 
   const [activeTier, setActiveTier] = useState<AuditTier | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -112,7 +130,6 @@ export default function AuditStudioPage({
   const [isSaving, setIsSaving] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [savedNotice, setSavedNotice] = useState(false);
 
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -358,8 +375,8 @@ export default function AuditStudioPage({
       else delete next[editingId];
       return next;
     });
-    setSavedNotice(false);
     setEditingId(null);
+    toast.success(override ? "Line item updated" : "Line item reset");
   };
 
   const handleDiscard = () => {
@@ -379,6 +396,7 @@ export default function AuditStudioPage({
       setOverrides({});
     }
     setActionError(null);
+    toast.info("Changes discarded");
   };
 
   const handleSave = async () => {
@@ -408,7 +426,7 @@ export default function AuditStudioPage({
           e: eligibilitySnapshot,
         })
       );
-      setSavedNotice(true);
+      toast.success("Changes saved");
       return;
     }
 
@@ -450,13 +468,16 @@ export default function AuditStudioPage({
     setIsSaving(false);
 
     if (error) {
-      setActionError(`Could not save changes: ${error.message}`);
+      const msg = `Could not save changes: ${error.message}`;
+      setActionError(msg);
+      toast.error(msg);
       return;
     }
     if (!data || data.length === 0) {
-      setActionError(
-        "Changes were not saved. Please make sure you are signed in to the account that owns this audit."
-      );
+      const msg =
+        "Changes were not saved. Please make sure you are signed in to the account that owns this audit.";
+      setActionError(msg);
+      toast.error(msg);
       return;
     }
 
@@ -468,7 +489,7 @@ export default function AuditStudioPage({
         e: eligibilitySnapshot,
       })
     );
-    setSavedNotice(true);
+    toast.success("Changes saved");
   };
 
   const handleAnalyze = async () => {
@@ -513,26 +534,15 @@ export default function AuditStudioPage({
   const backLink = (
     <Link
       href="/audits"
-      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors hover:text-blue-600"
+      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors hover:text-[#2563EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded-md"
     >
       <ArrowLeft className="h-3.5 w-3.5" />
-      Document Archive
+      <span>Document Archive</span>
     </Link>
   );
 
   if (loadState === "loading") {
-    return (
-      <div className="mx-auto max-w-3xl space-y-4">
-        {backLink}
-        <div
-          className="flex items-center justify-center gap-2 rounded-3xl border border-slate-100 bg-white p-12 text-xs text-slate-600"
-          role="status"
-        >
-          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-          Loading audit...
-        </div>
-      </div>
-    );
+    return <AuditDetailSkeleton />;
   }
 
   if (loadState === "not_found" || loadState === "error") {
@@ -570,87 +580,138 @@ export default function AuditStudioPage({
     );
   }
 
-  // Staged but never analyzed: offer to run the AI instead of an empty studio.
+  // Staged but never analyzed: full-width editorial layout with Archive-style header + Edit modal.
   if (!ocr || !result) {
     return (
-      <div className="w-full max-w-5xl mx-auto space-y-6">
-        {backLink}
-        <Card className="bg-white">
-          <CardContent className="space-y-4 p-6 text-center md:p-6">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <div className="space-y-1">
-              <h1 className="text-base font-bold text-slate-900">
-                This bill hasn&apos;t been analyzed yet
-              </h1>
-              <p className="text-xs leading-relaxed text-slate-600">
-                Your statement is uploaded securely. Run the AI audit to extract
-                every line item and check it against PhilHealth case rates.
-              </p>
-            </div>
+      <div className="w-full max-w-none space-y-4 sm:space-y-5">
+        {/* Editorial Header */}
+        <div className="space-y-2.5 sm:space-y-3 border-b border-slate-200/80 pb-4 sm:pb-5">
+          {backLink}
 
-            <div className="mx-auto max-w-md space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left">
-              <span className="block text-[11px] font-bold text-slate-800">
-                Patient Statutory Privilege (RA 9994 / RA 10754)
+          <div className="space-y-1 min-w-0">
+            <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight text-slate-900">
+              This bill hasn&apos;t been analyzed yet
+            </h1>
+            <p className="text-xs sm:text-sm leading-relaxed text-slate-500 max-w-2xl">
+              Your statement is uploaded securely. Set patient privilege or
+              PhilHealth ward details if needed, then run the AI audit to
+              extract every line item and check it against PhilHealth case rates.
+            </p>
+          </div>
+
+          {/* Compact Privilege & PhilHealth Summary + Right-Aligned Edit Action */}
+          <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-0.5 text-[11px] sm:text-xs text-slate-600">
+            <div className="flex flex-wrap items-center gap-x-1 sm:gap-x-2 gap-y-0.5 min-w-0 leading-relaxed">
+              <span className="whitespace-nowrap">
+                Privilege:{" "}
+                <strong className="font-semibold text-slate-900">
+                  {statutoryDiscountType === "senior"
+                    ? "Senior (60+)"
+                    : statutoryDiscountType === "pwd"
+                      ? "PWD (RA 10754)"
+                      : "Regular"}
+                </strong>
               </span>
-              <div className="grid grid-cols-3 gap-1.5">
-                {(
-                  [
-                    { id: "regular", label: "Regular" },
-                    { id: "senior", label: "Senior (60+)" },
-                    { id: "pwd", label: "PWD (RA 10754)" },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={isAnalyzing}
-                    onClick={() => setStatutoryDiscountType(opt.id)}
-                    className={cn(
-                      "cursor-pointer rounded-full px-2.5 py-2 text-[11px] font-bold transition-all",
-                      statutoryDiscountType === opt.id
-                        ? "bg-blue-600 text-white shadow-xs"
-                        : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+              <span className="text-slate-400" aria-hidden="true">
+                ·
+              </span>
+              <span className="whitespace-nowrap">
+                Member:{" "}
+                <strong className="font-semibold text-slate-900">
+                  {eligibilitySnapshot.contributor_type === "indirect_nbb"
+                    ? "Indirect (NBB)"
+                    : eligibilitySnapshot.contributor_type === "direct"
+                      ? "Direct"
+                      : eligibilitySnapshot.contributor_type === "lifetime"
+                        ? "Lifetime"
+                        : "Auto"}
+                </strong>
+              </span>
+              <span className="text-slate-400" aria-hidden="true">
+                ·
+              </span>
+              <span className="whitespace-nowrap">
+                Ward:{" "}
+                <strong className="font-semibold text-slate-900">
+                  {eligibilitySnapshot.accommodation_type === "basic_ward"
+                    ? "Basic / Ward"
+                    : eligibilitySnapshot.accommodation_type === "non_basic_private"
+                      ? "Private"
+                      : "Auto"}
+                </strong>
+              </span>
+              <span className="text-slate-400" aria-hidden="true">
+                ·
+              </span>
+              <span className="whitespace-nowrap">
+                MDR:{" "}
+                <strong className="font-semibold text-slate-900">
+                  {eligibilitySnapshot.has_mdr_or_pin ? "Yes" : "Not Yet"}
+                </strong>
+              </span>
 
-            {actionError && (
-              <p
-                role="alert"
-                className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
-              >
-                {actionError}
-              </p>
-            )}
-
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              disabled={isAnalyzing}
-              onClick={handleAnalyze}
-              className="font-bold"
-            >
-              {isAnalyzing ? (
+              {!eligibilitySnapshot.has_mdr_or_pin && (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Analyzing with Gemini Flash...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" />
-                  <span>Analyze with AI OCR</span>
+                  <span className="text-slate-400" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="font-semibold text-amber-700 whitespace-nowrap">MDR Needed</span>
                 </>
               )}
-            </Button>
-          </CardContent>
-        </Card>
+            </div>
+
+            <button
+              type="button"
+              disabled={isAnalyzing}
+              onClick={openParamsModal}
+              aria-label="Edit privilege and PhilHealth membership details"
+              className="shrink-0 min-h-[44px] sm:min-h-[32px] px-1.5 sm:px-2 -mr-1.5 sm:-mr-2 rounded-lg text-[11px] sm:text-xs font-semibold text-[#2563EB] hover:bg-blue-50/70 transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+            >
+              <Pencil className="h-3 w-3 shrink-0" />
+              <span>Edit</span>
+            </button>
+          </div>
+        </div>
+
+        {actionError && (
+          <p
+            role="alert"
+            className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs sm:text-sm text-rose-800"
+          >
+            {actionError}
+          </p>
+        )}
+
+        {/* Inline Analyze CTA below the parameters divider */}
+        <div>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            disabled={isAnalyzing}
+            onClick={handleAnalyze}
+            className="w-full sm:w-auto min-h-[46px] px-7 font-bold text-xs sm:text-sm"
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Analyzing...</span>
+              </>
+            ) : (
+              <span>Analyze</span>
+            )}
+          </Button>
+        </div>
+
+        <AuditParametersModal
+          open={showParamsModal}
+          privilege={statutoryDiscountType}
+          eligibility={eligibilitySnapshot}
+          onClose={() => setShowParamsModal(false)}
+          onApply={handleApplyParamsModal}
+          subtitle="Set patient privilege and PhilHealth ward details before running the audit."
+          applyLabel="Apply"
+        />
       </div>
     );
   }
@@ -664,425 +725,239 @@ export default function AuditStudioPage({
   const hasMatchedPackage = result.detected_case_packages.length > 0;
 
   return (
-    <div
-      className={cn(
-        "w-full mx-auto space-y-6 transition-all duration-200",
-        showSideBySide && billImages.length > 0
-          ? "max-w-7xl px-3 sm:px-6"
-          : "max-w-5xl px-4 sm:px-6"
-      )}
-    >
+    <div className="w-full max-w-none space-y-4 sm:space-y-5 -mb-24 lg:mb-0">
       {backLink}
 
-      {/* Bill header */}
-      <Card className="bg-white">
-        <CardContent className="space-y-3 p-4 sm:p-5 md:p-6">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5 sm:gap-3">
-            <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
-              <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl bg-blue-50 text-blue-600">
-                <Building2 className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-base sm:text-lg font-bold leading-snug tracking-tight text-slate-900 break-words">
-                  {result.hospital_name}
-                </h1>
-                <p className="mt-0.5 text-[11px] sm:text-xs text-slate-600 leading-relaxed break-words">
-                  {[
-                    result.statement_number && `Statement #${result.statement_number}`,
-                    result.patient_name,
-                    ocr.admission_date &&
-                      `${ocr.admission_date}${ocr.discharge_date ? ` – ${ocr.discharge_date}` : ""}`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "Itemized Statement of Account"}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
-              {billImages.length > 0 && (
-                <Button
-                  type="button"
-                  variant={showSideBySide ? "primary" : "secondary"}
-                  size="sm"
-                  onClick={() => setShowSideBySide((prev) => !prev)}
-                  className="font-bold flex items-center gap-1.5 cursor-pointer shadow-soft"
-                >
-                  <Columns2 className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">
-                    {showSideBySide ? "Hide Statement Photo" : "Side-by-Side Bill"}
-                  </span>
-                  <span className="sm:hidden">
-                    {showSideBySide ? "Hide Bill" : "View Bill"}
-                  </span>
-                  <span
-                    className={cn(
-                      "px-1.5 py-0.2 rounded-full text-[10px] font-bold ml-0.5",
-                      showSideBySide
-                        ? "bg-white/20 text-white"
-                        : "bg-slate-200 text-slate-700"
-                    )}
-                  >
-                    {billImages.length}
-                  </span>
-                </Button>
-              )}
-              <Link href={`/audits/${id}/brief`}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="font-bold"
-                >
-                  <Printer className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Export Brief</span>
-                  <span className="sm:hidden">Brief</span>
-                </Button>
-              </Link>
-              {!getSampleBillById(id) && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing || isSaving}
-                  aria-label="Re-analyze with AI"
-                  className="shrink-0 text-slate-600"
-                >
-                  {isAnalyzing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  <span className="hidden sm:inline">Re-analyze</span>
-                </Button>
-              )}
-            </div>
-          </div>
+      {/* Full-Width Editorial Header & Audit Parameters */}
+      <header className="w-full border-b border-slate-200/80 pb-3.5 sm:pb-4 space-y-2.5">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl font-extrabold leading-tight tracking-[-0.025em] text-slate-900 break-words">
+              {result.hospital_name}
+            </h1>
+            <p className="mt-1 text-xs sm:text-sm text-slate-600 font-medium leading-snug break-words">
+              {[
+                result.statement_number && `Statement #${result.statement_number}`,
+                result.patient_name,
+                ocr.admission_date &&
+                  `${ocr.admission_date}${ocr.discharge_date ? ` – ${ocr.discharge_date}` : ""}`,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "Itemized Statement of Account"}
+            </p>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            {hasMatchedPackage ? (
-              result.detected_case_packages.map((pkg) => {
-                const isUnverified =
-                  pkg.is_verified === false ||
-                  Boolean(pkg.source_url?.startsWith("ai_grounded"));
-                return (
-                  <React.Fragment key={pkg.code}>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
-                      <ShieldCheck className="h-3 w-3" />
-                      {pkg.keyword} · {pkg.code} · {formatPHP(pkg.total_rate)}
-                    </span>
-                    {isUnverified && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
-                        <Sparkles className="h-2.5 w-2.5 text-amber-600" />
-                        AI-Estimated (Unverified)
+            {/* Compact Case Rate Context Tag */}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {hasMatchedPackage ? (
+                result.detected_case_packages.map((pkg) => {
+                  const isUnverified =
+                    pkg.is_verified === false ||
+                    Boolean(pkg.source_url?.startsWith("ai_grounded"));
+                  return (
+                    <React.Fragment key={pkg.code}>
+                      <span className="inline-flex items-center rounded-md bg-blue-50/80 px-2 py-0.5 text-[11px] font-semibold text-[#2563EB]">
+                        {pkg.keyword} · {pkg.code} · {formatPHP(pkg.total_rate)}
                       </span>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
-                No PhilHealth case package matched
-              </span>
-            )}
-          </div>
-
-          <div className="space-y-2 rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-800">
-                Patient Statutory Privilege
-                <span className="ml-1.5 font-normal text-slate-500">
-                  RA 9994 (OSCA) / RA 10754 (PDAO)
-                </span>
-              </span>
-              <span className="text-[10px] font-bold uppercase text-slate-500">
-                Mutually Exclusive
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(
-                [
-                  { id: "regular", label: "Regular" },
-                  { id: "senior", label: "Senior Citizen (60+)" },
-                  { id: "pwd", label: "PWD (RA 10754)" },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => {
-                    setStatutoryDiscountType(opt.id);
-                    setSavedNotice(false);
-                  }}
-                  className={cn(
-                    "cursor-pointer rounded-full px-2.5 py-2 text-[11px] font-bold transition-all",
-                    statutoryDiscountType === opt.id
-                      ? "bg-blue-600 text-white shadow-xs"
-                      : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Collapsible PhilHealth Membership & Ward Info Drawer (Migration 007) */}
-          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-50">
-            <button
-              type="button"
-              onClick={() => setShowEligibilityDrawer((prev) => !prev)}
-              className="flex w-full cursor-pointer items-center justify-between gap-2 px-3.5 py-2.5 text-left transition-colors hover:bg-slate-100"
-            >
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <BedDouble className="h-3.5 w-3.5 shrink-0 text-blue-600" />
-                <span className="text-xs font-semibold text-slate-800">
-                  PhilHealth Membership &amp; Ward Info
-                </span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                  {eligibilitySnapshot.contributor_type === "indirect_nbb"
-                    ? "Indirect (NBB)"
-                    : eligibilitySnapshot.contributor_type === "direct"
-                      ? "Direct"
-                      : eligibilitySnapshot.contributor_type === "lifetime"
-                        ? "Lifetime"
-                        : "Member: Auto"}
-                </span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                  {eligibilitySnapshot.accommodation_type === "basic_ward"
-                    ? "Basic / Ward"
-                    : eligibilitySnapshot.accommodation_type ===
-                        "non_basic_private"
-                      ? "Private Room"
-                      : "Ward: Auto"}
-                </span>
-                {!eligibilitySnapshot.has_mdr_or_pin && (
-                  <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                    MDR Needed
-                  </span>
-                )}
-              </div>
-              {showEligibilityDrawer ? (
-                <ChevronUp className="h-4 w-4 shrink-0 text-slate-500" />
+                      {isUnverified && (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                          AI-Estimated (Unverified)
+                        </span>
+                      )}
+                    </React.Fragment>
+                  );
+                })
               ) : (
-                <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+                <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                  No PhilHealth case package matched
+                </span>
               )}
-            </button>
+            </div>
+          </div>
 
-            {showEligibilityDrawer && (
-              <div className="space-y-3 border-t border-slate-200/80 bg-white/70 p-3.5">
-                <div>
-                  <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
-                    Contributor Type (NBB Eligibility)
-                  </span>
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                    {(
-                      [
-                        { id: "unknown", label: "Not Sure" },
-                        { id: "direct", label: "Direct" },
-                        { id: "indirect_nbb", label: "Indirect / NBB" },
-                        { id: "lifetime", label: "Lifetime" },
-                      ] as const
-                    ).map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => {
-                          setEligibilitySnapshot((prev) => ({
-                            ...prev,
-                            contributor_type: opt.id,
-                          }));
-                          setSavedNotice(false);
-                        }}
-                        className={cn(
-                          "cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
-                          eligibilitySnapshot.contributor_type === opt.id
-                            ? "bg-blue-600 text-white"
-                            : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+          {/* Clean Header Action Controls (Export Brief is primary CTA; Photo toggle & Re-analyze are subtle) */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 lg:shrink-0">
+            <Link
+              href={`/audits/${id}/brief`}
+              className="min-h-[40px] sm:min-h-[44px] px-3 sm:px-5 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[11px] sm:text-xs font-bold shadow-sm shadow-blue-500/20 inline-flex items-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
+            >
+              <Printer className="h-3.5 w-3.5 shrink-0" />
+              <span>Export Brief</span>
+            </Link>
 
-                <div>
-                  <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
-                    Room / Ward Accommodation
-                  </span>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {(
-                      [
-                        { id: "unknown", label: "Not Sure" },
-                        { id: "basic_ward", label: "Basic / Ward (NBB)" },
-                        { id: "non_basic_private", label: "Private Room" },
-                      ] as const
-                    ).map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => {
-                          setEligibilitySnapshot((prev) => ({
-                            ...prev,
-                            accommodation_type: opt.id,
-                          }));
-                          setSavedNotice(false);
-                        }}
-                        className={cn(
-                          "cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
-                          eligibilitySnapshot.accommodation_type === opt.id
-                            ? "bg-blue-600 text-white"
-                            : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            {billImages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowSideBySide((prev) => !prev)}
+                aria-label={
+                  showSideBySide
+                    ? `Hide statement photo (${billImages.length})`
+                    : `Show statement photo (${billImages.length})`
+                }
+                title={showSideBySide ? "Hide statement photo" : "Show statement photo"}
+                className="min-h-[40px] sm:min-h-[44px] px-2.5 sm:px-3.5 rounded-full bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+              >
+                {showSideBySide ? (
+                  <EyeOff className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                )}
+                <span>
+                  {showSideBySide ? "Hide Photo" : "Show Photo"}
+                  {billImages.length > 1 && (
+                    <span className="hidden sm:inline">{` (${billImages.length})`}</span>
+                  )}
+                </span>
+              </button>
+            )}
 
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  <div>
-                    <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
-                      PhilHealth MDR / PIN Presented?
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(
-                        [
-                          { val: true, label: "Yes, Presented" },
-                          { val: false, label: "Not Yet" },
-                        ] as const
-                      ).map((opt) => (
-                        <button
-                          key={String(opt.val)}
-                          type="button"
-                          onClick={() => {
-                            setEligibilitySnapshot((prev) => ({
-                              ...prev,
-                              has_mdr_or_pin: opt.val,
-                            }));
-                            setSavedNotice(false);
-                          }}
-                          className={cn(
-                            "cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
-                            eligibilitySnapshot.has_mdr_or_pin === opt.val
-                              ? "bg-blue-600 text-white"
-                              : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
-                          )}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+            {!getSampleBillById(id) && (
+              <button
+                type="button"
+                onClick={handleAnalyze}
+                disabled={isAnalyzing || isSaving}
+                aria-label="Re-analyze with AI"
+                className="min-h-[40px] sm:min-h-[44px] px-2 sm:px-3 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span>Re-analyze</span>
+              </button>
+            )}
+          </div>
+        </div>
 
-                  <div>
-                    <span className="mb-1 block text-[10px] font-bold uppercase text-slate-500">
-                      Hospital Facility Level
-                    </span>
-                    <select
-                      value={eligibilitySnapshot.facility_level}
-                      onChange={(e) => {
-                        setEligibilitySnapshot((prev) => ({
-                          ...prev,
-                          facility_level: e.target
-                            .value as EligibilitySnapshot["facility_level"],
-                        }));
-                        setSavedNotice(false);
-                      }}
-                      className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-800"
-                    >
-                      <option value="unknown">Auto / Not Sure</option>
-                      <option value="level_1">Level 1 Hospital</option>
-                      <option value="level_2">Level 2 Hospital</option>
-                      <option value="level_3">Level 3 Tertiary</option>
-                      <option value="asc">ASC / Dialysis Center</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
+        {/* Compact Privilege & PhilHealth Summary + Right-Aligned Edit Action */}
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-0.5 text-[11px] sm:text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-x-1 sm:gap-x-2 gap-y-0.5 min-w-0 leading-relaxed">
+            <span className="whitespace-nowrap">
+              Privilege:{" "}
+              <strong className="font-semibold text-slate-900">
+                {statutoryDiscountType === "senior"
+                  ? "Senior (60+)"
+                  : statutoryDiscountType === "pwd"
+                    ? "PWD (RA 10754)"
+                    : "Regular"}
+              </strong>
+            </span>
+            <span className="text-slate-400" aria-hidden="true">
+              ·
+            </span>
+            <span className="whitespace-nowrap">
+              Member:{" "}
+              <strong className="font-semibold text-slate-900">
+                {eligibilitySnapshot.contributor_type === "indirect_nbb"
+                  ? "Indirect (NBB)"
+                  : eligibilitySnapshot.contributor_type === "direct"
+                    ? "Direct"
+                    : eligibilitySnapshot.contributor_type === "lifetime"
+                      ? "Lifetime"
+                      : "Auto"}
+              </strong>
+            </span>
+            <span className="text-slate-400" aria-hidden="true">
+              ·
+            </span>
+            <span className="whitespace-nowrap">
+              Ward:{" "}
+              <strong className="font-semibold text-slate-900">
+                {eligibilitySnapshot.accommodation_type === "basic_ward"
+                  ? "Basic / Ward"
+                  : eligibilitySnapshot.accommodation_type === "non_basic_private"
+                    ? "Private"
+                    : "Auto"}
+              </strong>
+            </span>
+            <span className="text-slate-400" aria-hidden="true">
+              ·
+            </span>
+            <span className="whitespace-nowrap">
+              MDR:{" "}
+              <strong className="font-semibold text-slate-900">
+                {eligibilitySnapshot.has_mdr_or_pin ? "Yes" : "Not Yet"}
+              </strong>
+            </span>
+
+            {!eligibilitySnapshot.has_mdr_or_pin && (
+              <>
+                <span className="text-slate-400" aria-hidden="true">
+                  ·
+                </span>
+                <span className="font-semibold text-amber-700 whitespace-nowrap">MDR Needed</span>
+              </>
             )}
           </div>
 
-          {!eligibilitySnapshot.has_mdr_or_pin && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
-              <p className="flex items-center gap-1.5 font-bold text-amber-900">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                Pre-Discharge Checklist: Pull Your PhilHealth MDR / PIN Before Paying
-              </p>
-              <p className="mt-1">
-                Sign in to the <strong>PhilHealth Member Portal</strong> (
-                <code>memberinquiry.philhealth.gov.ph</code>) or open the{" "}
-                <strong>eGovPH Super App</strong> on your phone to download your
-                Member Data Record (MDR) and present your PIN to the hospital
-                billing desk before final settlement.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <button
+            type="button"
+            onClick={openParamsModal}
+            aria-label="Edit privilege and PhilHealth membership details"
+            className="shrink-0 min-h-[44px] sm:min-h-[32px] px-1.5 sm:px-2 -mr-1.5 sm:-mr-2 rounded-lg text-[11px] sm:text-xs font-semibold text-[#2563EB] hover:bg-blue-50/70 transition-colors inline-flex items-center gap-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+          >
+            <Pencil className="h-3 w-3 shrink-0" />
+            <span>Edit</span>
+          </button>
+        </div>
+      </header>
 
-      {/* Side-by-Side Split View Container */}
-      <div
-        className={cn(
-          "grid gap-6 items-start",
-          showSideBySide && billImages.length > 0
-            ? "grid-cols-1 lg:grid-cols-12"
-            : "grid-cols-1"
-        )}
-      >
+      {/* Side-by-Side Split View Container (Smooth Expand/Collapse Animation) */}
+      <div className="flex flex-col lg:flex-row lg:items-start transition-all duration-300 ease-out motion-reduce:transition-none">
         {/* Left Column: Original Hospital Statement Document Viewer (Sticky on Desktop) */}
-        {showSideBySide && billImages.length > 0 && (
-          <div className="lg:col-span-5 xl:col-span-5 lg:sticky lg:top-20 z-10">
+        {billImages.length > 0 && (
+          <div
+            aria-hidden={!showSideBySide}
+            className={cn(
+              "transition-[width,margin,opacity,max-height] duration-300 ease-out motion-reduce:transition-none shrink-0",
+              showSideBySide
+                ? "w-full lg:w-[42%] lg:mr-8 mb-5 lg:mb-0 opacity-100 max-h-[850px] lg:max-h-none lg:sticky lg:top-24 z-10"
+                : "w-full lg:w-0 lg:mr-0 mb-0 opacity-0 max-h-0 overflow-hidden pointer-events-none invisible"
+            )}
+          >
             <SideBySideBillViewer
               images={billImages}
               hospitalName={result.hospital_name}
               onClose={() => setShowSideBySide(false)}
-              className="h-[calc(100vh-6.5rem)]"
             />
           </div>
         )}
 
-        {/* Right Column: Financial Summaries & Itemized Line Items */}
+        {/* Right Column: Sticky Financial Summary + Independently Scrollable Line Items */}
         <div
           className={cn(
-            "space-y-5 min-w-0",
-            showSideBySide && billImages.length > 0
-              ? "lg:col-span-7 xl:col-span-7"
-              : "w-full"
+            "flex-1 min-w-0 flex flex-col space-y-3 sm:space-y-4 sticky top-[68px] sm:top-[76px] lg:top-24 h-[calc(100dvh-4.75rem)] sm:h-[calc(100dvh-5.25rem)] lg:h-[calc(100vh-9.5rem)] transition-[width] duration-300 ease-out motion-reduce:transition-none"
           )}
         >
           {/* Unified Financial Summary & Traffic-Light Triage Dashboard */}
-          <TrafficLightSummary
-            items={result.line_items}
-            activeTier={activeTier}
-            onSelectTier={setActiveTier}
-            grossTotal={result.gross_total}
-            actualOutOfPocket={result.actual_out_of_pocket}
-            potentialSavings={potentialSavings}
-            fairOutOfPocket={result.fair_out_of_pocket}
-          />
+          <div className="shrink-0">
+            <TrafficLightSummary
+              items={result.line_items}
+              activeTier={activeTier}
+              onSelectTier={setActiveTier}
+              grossTotal={result.gross_total}
+              actualOutOfPocket={result.actual_out_of_pocket}
+              potentialSavings={potentialSavings}
+              fairOutOfPocket={result.fair_out_of_pocket}
+            />
+          </div>
 
-      {/* Bill-level findings */}
+      {/* Bill-level findings (Clean Editorial Left-Accent Callout, No Box) */}
       {billLevelFlags.length > 0 && (
-        <div className="space-y-2">
+        <div className="shrink-0 space-y-3 border-b border-slate-200/80 pb-4">
           {billLevelFlags.map((flag, index) => (
             <div
               key={`${flag.type}-${index}`}
-              className={cn(
-                "rounded-2xl border px-3.5 py-3 text-xs leading-relaxed",
-                TIER_META.review_worthy.callout
-              )}
+              className="border-l-2 border-amber-500 pl-3.5 py-0.5 text-xs leading-relaxed"
             >
-              <p className="flex items-center gap-1.5 font-bold">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                {flag.title}
-              </p>
-              <p className="mt-1">{flag.description}</p>
+              <p className="font-bold text-slate-900">{flag.title}</p>
+              <p className="mt-0.5 text-slate-600">{flag.description}</p>
               {flag.potential_savings > 0 && (
-                <p className="mt-1 font-bold">
-                  Potential savings: {formatPHP(flag.potential_savings)}
+                <p className="mt-1 text-slate-500">
+                  Potential savings:{" "}
+                  <span className="font-bold text-amber-700 font-mono tabular-nums">
+                    {formatPHP(flag.potential_savings)}
+                  </span>
                 </p>
               )}
             </div>
@@ -1091,19 +966,20 @@ export default function AuditStudioPage({
       )}
 
       {!hasMatchedPackage && (
-        <p className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-xs leading-relaxed text-slate-600 shadow-2xs">
-          No PhilHealth case package was matched to this bill, so unbundling
-          checks were skipped. Only statutory Senior/PWD checks and your own
-          overrides apply.
+        <p className="shrink-0 border-y border-slate-200/80 py-2.5 px-1 text-xs text-slate-500">
+          Unbundling checks skipped (no PhilHealth case package matched); statutory discounts and overrides still apply.
         </p>
       )}
 
-      {/* Line items */}
-      <section className="space-y-3" aria-labelledby="line-items-heading">
-        <div className="flex items-center justify-between gap-3 px-1">
+      {/* Line items (Independently Scrollable Across Mobile, Tablet, and Desktop; Hidden Scrollbar) */}
+      <section
+        className="flex-1 flex flex-col space-y-2 sm:space-y-2.5 min-h-0"
+        aria-labelledby="line-items-heading"
+      >
+        <div className="shrink-0 flex items-center justify-between gap-3 px-1 min-h-[36px]">
           <h2
             id="line-items-heading"
-            className="text-sm font-bold text-slate-900"
+            className="text-sm sm:text-base font-bold text-slate-900"
           >
             Line items{" "}
             <span className="font-normal text-slate-500">
@@ -1115,101 +991,85 @@ export default function AuditStudioPage({
             <button
               type="button"
               onClick={() => setActiveTier(null)}
-              className="cursor-pointer text-xs font-semibold text-blue-600 hover:underline"
+              className="cursor-pointer min-h-[36px] px-2 t-xs font-semibold text-[#2563EB] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded-md"
             >
               Show all
             </button>
           )}
         </div>
 
-        {visibleItems.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-8 text-center text-xs text-slate-600 shadow-2xs">
-            {result.line_items.length === 0
-              ? "No line items were detected on this statement. Try re-analyzing with a clearer photo."
-              : `No items are classified as ${activeTier ? TIER_META[activeTier].label : "this tier"}.`}
-          </div>
-        ) : (
-          <ul className="space-y-2.5">
-            {visibleItems.map((item) => (
-              <AuditLineItemRow
-                key={item.id}
-                item={item}
-                original={ocr.line_items.find((o) => o.id === item.id)}
-                override={overrides[item.id]}
-                onEdit={() => setEditingId(item.id)}
-              />
-            ))}
-          </ul>
-        )}
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none pb-28 lg:pb-0">
+          {visibleItems.length === 0 ? (
+            <div
+              key={`empty-${activeTier ?? "all"}`}
+              className="animate-fade-slide-in border-y border-slate-200/80 py-10 text-center text-xs text-slate-600"
+            >
+              {result.line_items.length === 0
+                ? "No line items were detected on this statement. Try re-analyzing with a clearer photo."
+                : `No items are classified as ${activeTier ? TIER_META[activeTier].label : "this tier"}.`}
+            </div>
+          ) : (
+            <ul
+              key={activeTier ?? "all"}
+              className="animate-fade-slide-in divide-y divide-slate-200/80 border-y border-slate-200/80"
+            >
+              {visibleItems.map((item) => (
+                <AuditLineItemRow
+                  key={item.id}
+                  item={item}
+                  original={ocr.line_items.find((o) => o.id === item.id)}
+                  override={overrides[item.id]}
+                  onEdit={() => setEditingId(item.id)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
         </div>
       </div>
 
-      {/* Compact Floating Save / Confirmation Status Pill */}
-      {(isDirty || savedNotice || actionError) && (
-        <div className="sticky bottom-24 z-30 flex justify-center px-4 md:bottom-5 pointer-events-none">
+      {/* Compact Floating Unsaved Changes Action Pill (No blur, stays only while dirty) */}
+      {isDirty && (
+        <div className="sticky bottom-24 z-30 flex justify-center px-4 lg:bottom-5 pointer-events-none">
           <div
-            className="pointer-events-auto inline-flex flex-wrap items-center justify-between gap-3 rounded-full border border-slate-200/90 bg-white/95 px-4 py-2 shadow-lg backdrop-blur-md max-w-md"
+            className="pointer-events-auto inline-flex flex-wrap items-center justify-between gap-3 rounded-full border border-slate-200/90 bg-white px-4 py-2 shadow-lg max-w-md"
             role="status"
           >
             <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "h-2 w-2 shrink-0 rounded-full",
-                  actionError
-                    ? "bg-rose-500"
-                    : isDirty
-                      ? "bg-amber-500"
-                      : "bg-emerald-500"
-                )}
-              />
-              <p
-                className={cn(
-                  "text-xs font-semibold whitespace-nowrap",
-                  actionError
-                    ? "text-rose-700"
-                    : isDirty
-                      ? "text-slate-800"
-                      : "text-emerald-700"
-                )}
-              >
-                {actionError
-                  ? actionError
-                  : isDirty
-                    ? "You have unsaved changes"
-                    : "Changes saved"}
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+              <p className="text-xs font-semibold whitespace-nowrap text-slate-800">
+                You have unsaved changes
               </p>
             </div>
-            {isDirty && (
-              <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDiscard}
-                  disabled={isSaving}
-                  className="h-7 rounded-full px-3 text-[11px] font-semibold"
-                >
-                  <Undo2 className="h-3 w-3" />
-                  Discard
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="h-7 rounded-full px-3.5 text-[11px] font-bold"
-                >
-                  {isSaving ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Save className="h-3 w-3" />
-                  )}
-                  Save changes
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDiscard}
+                disabled={isSaving}
+                className="h-8 rounded-full px-3 text-[11px] font-semibold"
+              >
+                <Undo2 className="h-3 w-3" />
+                Discard
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="h-8 rounded-full px-3.5 text-[11px] font-bold"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                Save changes
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -1224,6 +1084,15 @@ export default function AuditStudioPage({
           onClose={() => setEditingId(null)}
         />
       )}
+
+      {/* Focused Audit Parameters Modal Popup */}
+      <AuditParametersModal
+        open={showParamsModal}
+        privilege={statutoryDiscountType}
+        eligibility={eligibilitySnapshot}
+        onClose={() => setShowParamsModal(false)}
+        onApply={handleApplyParamsModal}
+      />
 
       <AuditChatbotDrawer auditId={id} auditResult={result} />
     </div>

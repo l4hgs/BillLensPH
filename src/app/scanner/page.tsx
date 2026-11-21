@@ -11,6 +11,7 @@ import {
 import { ScannerViewfinder } from "@/components/scanner/ScannerViewfinder";
 import { StatementStagingCard } from "@/components/scanner/StatementStagingCard";
 import { useScanBackground } from "@/components/providers/ScanBackgroundProvider";
+import { useToast } from "@/components/providers/ToastProvider";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_ELIGIBILITY_SNAPSHOT,
@@ -32,6 +33,7 @@ import type {
 
 export default function ScannerPage() {
   const router = useRouter();
+  const toast = useToast();
   const {
     scanState,
     isBusy: isBackgroundBusy,
@@ -42,9 +44,40 @@ export default function ScannerPage() {
 
   const [isDragging, setIsDragging] = useState(false);
 
-  const [pages, setPages] = useState<ScannedPage[]>([]);
+  const [pages, setPages] = useState<ScannedPage[]>(() => {
+    const hasActiveOrDoneJob =
+      scanState.stage === "uploading" ||
+      scanState.stage === "staging_db" ||
+      scanState.stage === "analyzing_ocr" ||
+      scanState.stage === "completed" ||
+      scanState.stage === "error";
+    if (!hasActiveOrDoneJob || scanState.pages.length === 0) return [];
+    return scanState.pages.map((p, idx) => ({
+      id: `restored-${idx}-${p.originalName}`,
+      originalName: p.originalName,
+      result: {
+        file: p.file,
+        blob: p.file,
+        mimeType: p.mimeType,
+        previewUrl: p.previewUrl ?? "",
+        originalSize: p.originalSize ?? p.file.size,
+        compressedSize: p.compressedSize ?? p.file.size,
+        compressionRatio: p.compressionRatio ?? 1,
+        wasCompressed: (p.compressionRatio ?? 1) < 1,
+        width: p.width ?? 0,
+        height: p.height ?? 0,
+      },
+    }));
+  });
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
-  const [hospitalName, setHospitalName] = useState<string>("");
+  const [hospitalName, setHospitalName] = useState<string>(() =>
+    scanState.pages.length > 0 &&
+    (isBackgroundBusy ||
+      scanState.stage === "completed" ||
+      scanState.stage === "error")
+      ? scanState.hospitalName
+      : ""
+  );
 
   const [stage, setStage] = useState<PipelineStage>("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");
@@ -62,10 +95,18 @@ export default function ScannerPage() {
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const pagesRef = useRef<ScannedPage[]>([]);
+  const keepPreviewsOnUnmountRef = useRef<boolean>(false);
 
   useEffect(() => {
     pagesRef.current = pages;
   }, [pages]);
+
+  useEffect(() => {
+    keepPreviewsOnUnmountRef.current =
+      isBackgroundBusy ||
+      scanState.stage === "completed" ||
+      scanState.stage === "error";
+  }, [isBackgroundBusy, scanState.stage]);
 
   // Synchronize when background scan finishes
   useEffect(() => {
@@ -107,6 +148,7 @@ export default function ScannerPage() {
 
   useEffect(() => {
     return () => {
+      if (keepPreviewsOnUnmountRef.current) return;
       pagesRef.current.forEach((p) => {
         if (p.result.previewUrl) {
           URL.revokeObjectURL(p.result.previewUrl);
@@ -123,13 +165,16 @@ export default function ScannerPage() {
       setErrorMessage(null);
       setStagedAuditId(null);
       setOcrAuditResult(null);
+      if (!isBackgroundBusy) {
+        resetScanJob();
+      }
 
       const invalidFile = incomingFiles.find((f) => !isSupportedBillFile(f));
       if (invalidFile) {
+        const msg = `Unsupported file "${invalidFile.name}". Please upload JPEG, PNG, WebP, HEIC photos, or a PDF statement.`;
         setStage("error");
-        setErrorMessage(
-          `Unsupported file "${invalidFile.name}". Please upload JPEG, PNG, WebP, HEIC photos, or a PDF statement.`
-        );
+        setErrorMessage(msg);
+        toast.error(msg);
         return;
       }
 
@@ -166,9 +211,10 @@ export default function ScannerPage() {
             : "Failed to compress image. Please try another file.";
         setStage("error");
         setErrorMessage(msg);
+        toast.error(msg);
       }
     },
-    []
+    [isBackgroundBusy, resetScanJob, toast]
   );
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -212,6 +258,10 @@ export default function ScannerPage() {
     setErrorMessage(null);
     setStagedAuditId(null);
     setOcrAuditResult(null);
+    if (!isBackgroundBusy) {
+      resetScanJob();
+    }
+    toast.info("Statement page removed");
   };
 
   const handleResetAll = () => {
@@ -230,6 +280,7 @@ export default function ScannerPage() {
     setStagedAuditId(null);
     setOcrAuditResult(null);
     resetScanJob();
+    toast.info("Staged pages cleared");
   };
 
   const handleUploadAndStage = async () => {
@@ -302,7 +353,7 @@ export default function ScannerPage() {
   };
 
   return (
-    <div className="w-full max-w-none space-y-6">
+    <div className="w-full max-w-none space-y-4 sm:space-y-5">
       {/* Hidden File Inputs */}
       <input
         ref={cameraInputRef}
@@ -332,7 +383,7 @@ export default function ScannerPage() {
       />
 
       {/* Editorial Header - Clean typographic hierarchy, compassionate value prop */}
-      <div className="space-y-1.5 border-b border-slate-200/80 pb-5 sm:pb-6">
+      <div className="space-y-1 border-b border-slate-200/80 pb-4 sm:pb-5">
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
           Scan Statement
         </h1>
@@ -342,26 +393,28 @@ export default function ScannerPage() {
       </div>
 
       {/* Main Upload Dropzone & Staged Pages */}
-      <ScannerViewfinder
-        pages={pages}
-        activePageIndex={activePageIndex}
-        setActivePageIndex={setActivePageIndex}
-        stage={effectiveStage}
-        statusMessage={effectiveStatusMessage}
-        uploadProgress={effectiveProgress}
-        isDragging={isDragging}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onBrowseFiles={() => fileInputRef.current?.click()}
-        onTakePhoto={() => cameraInputRef.current?.click()}
-        onRemovePage={handleRemovePage}
-        isAuditComplete={Boolean(ocrAuditResult ?? scanState.completedResult)}
-      />
+      <div className="animate-rate-item" style={{ animationDelay: "60ms" }}>
+        <ScannerViewfinder
+          pages={pages}
+          activePageIndex={activePageIndex}
+          setActivePageIndex={setActivePageIndex}
+          stage={effectiveStage}
+          statusMessage={effectiveStatusMessage}
+          uploadProgress={effectiveProgress}
+          isDragging={isDragging}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onBrowseFiles={() => fileInputRef.current?.click()}
+          onTakePhoto={() => cameraInputRef.current?.click()}
+          onRemovePage={handleRemovePage}
+          isAuditComplete={Boolean(ocrAuditResult ?? scanState.completedResult)}
+        />
+      </div>
 
       {/* Error Alert Banner */}
       {effectiveErrorMessage && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start justify-between gap-3 transition-opacity duration-150">
+        <div className="animate-fade-slide-in p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start justify-between gap-3 transition-opacity duration-150">
           <div className="flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div>
@@ -403,7 +456,7 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* Staging & Upload Controls or Completion Card */}
+      {/* Staging & Upload Controls or Completion Card (no transform ancestor so fixed dock anchors to viewport) */}
       <StatementStagingCard
         pageCount={pages.length}
         stage={effectiveStage}

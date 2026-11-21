@@ -1,15 +1,16 @@
 "use client";
 
 import React, { use, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
   Check,
   Copy,
-  Loader2,
   Printer,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +20,8 @@ import {
   type NegotiationBriefMeta,
 } from "@/components/audit/NegotiationBriefDocument";
 import { AuditChatbotDrawer } from "@/components/audit/AuditChatbotDrawer";
+import { NegotiationBriefSkeleton } from "@/components/audit/AuditSkeletons";
+import { useToast } from "@/components/providers/ToastProvider";
 import { createClient } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
 import {
@@ -85,7 +88,19 @@ export default function NegotiationBriefPage({
   );
   const [contactInfo, setContactInfo] = useState("");
   const [showCustomize, setShowCustomize] = useState(false);
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!showCustomize) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowCustomize(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showCustomize]);
 
   const preparedDate = useMemo(
     () =>
@@ -265,24 +280,15 @@ export default function NegotiationBriefPage({
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
+      toast.success("Brief copied to clipboard");
       window.setTimeout(() => setCopied(false), 2200);
     } catch {
-      // Clipboard API fallback not needed on modern browsers
+      toast.error("Could not copy brief to clipboard");
     }
   };
 
   if (loadState === "loading") {
-    return (
-      <div className="mx-auto max-w-3xl space-y-4">
-        <div
-          className="flex items-center justify-center gap-2 rounded-2xl border border-[#CBD5E1] bg-white p-12 text-xs text-[#64748B]"
-          role="status"
-        >
-          <Loader2 className="h-4 w-4 animate-spin text-[#2563EB]" />
-          Preparing formal negotiation brief...
-        </div>
-      </div>
-    );
+    return <NegotiationBriefSkeleton />;
   }
 
   if (loadState === "not_found" || loadState === "error" || !ocr || !result) {
@@ -322,159 +328,171 @@ export default function NegotiationBriefPage({
 
   return (
     <div className="w-full max-w-none space-y-6 print:space-y-0">
-      {/* Top Interactive Toolbar (Hidden when printing) */}
-      <div className="no-print print:hidden space-y-3">
-        <div className="flex flex-col gap-3 rounded-2xl border border-[#CBD5E1] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/audits/${id}`}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#CBD5E1] bg-[#F3F4F6] px-3 py-1.5 text-xs font-bold text-[#1E293B] transition-colors hover:border-[#2563EB] hover:text-[#2563EB] whitespace-nowrap"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Audit Studio</span>
-            </Link>
-            <div className="min-w-0">
-              <h2 className="truncate text-xs font-extrabold text-[#1E293B] sm:text-sm">
-                Formal Negotiation &amp; Subsidy Brief
-              </h2>
-              <p className="text-[11px] text-[#64748B]">
-                Ready for hospital Billing / PhilHealth desk or Malasakit Center
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowCustomize((prev) => !prev)}
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              <span>Customize Signatory</span>
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleCopyPlainText}
-            >
-              {copied ? (
-                <>
-                  <Check className="h-3.5 w-3.5 text-emerald-600" />
-                  <span className="text-emerald-700">Copied Brief!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3.5 w-3.5" />
-                  <span>Copy Text</span>
-                </>
-              )}
-            </Button>
-
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={handlePrint}
-              className="font-bold"
-            >
-              <Printer className="h-3.5 w-3.5" />
-              <span>Print / Save PDF</span>
-            </Button>
+      {/* Clean Sticky Top Action Strip (No Card Wrapper, Hidden When Printing) */}
+      <header className="no-print print:hidden sticky top-[60px] sm:top-[68px] z-30 w-full bg-[#F8FAFC] border-b border-slate-200/80 pt-2 pb-3.5 -mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href={`/audits/${id}`}
+            aria-label="Back to Audit Studio"
+            title="Back to Audit Studio"
+            className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#2563EB] hover:text-[#2563EB] hover:bg-blue-50/40 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+              Formal Negotiation &amp; Subsidy Brief
+            </h2>
+            <p className="text-xs text-slate-500 truncate">
+              Ready for hospital Billing / PhilHealth desk or Malasakit Center
+            </p>
           </div>
         </div>
 
-        {/* Optional Signatory Customization Panel */}
-        {showCustomize && (
-          <div className="rounded-2xl border border-[#CBD5E1] bg-white p-4 space-y-3 transition-opacity duration-150">
-            <p className="text-xs font-bold text-[#1E293B]">
-              Customize Letter Signatory &amp; Statutory Details
-            </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div>
-                <label
-                  htmlFor="brief-rep-name"
-                  className="mb-1 block text-[11px] font-bold text-[#64748B]"
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowCustomize(true)}
+            className="min-h-[44px] px-3.5 rounded-full border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+            <span>Customize Signatory</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCopyPlainText}
+            className="min-h-[44px] px-3.5 rounded-full border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="text-emerald-700">Copied Brief!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5 text-slate-500" />
+                <span>Copy Text</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="min-h-[44px] px-5 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold shadow-sm shadow-blue-500/20 inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            <span>Print / Save PDF</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Signatory & Statutory Details Modal Popup (Portal, NO backdrop-blur, Escape key supported) */}
+      {showCustomize &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Customize letter signatory and statutory details"
+            className="no-print print:hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 sm:p-6 transition-opacity duration-150"
+            onClick={() => setShowCustomize(false)}
+          >
+            <div
+              className="relative w-full max-w-xl max-h-[90dvh] bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="shrink-0 px-5 py-3.5 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-white">
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">
+                    Customize Letter Signatory
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Update representative and contact details on the formal letter.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close signatory modal"
+                  onClick={() => setShowCustomize(false)}
+                  className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
                 >
-                  Representative / Patient Name
-                </label>
-                <input
-                  id="brief-rep-name"
-                  type="text"
-                  value={representativeName}
-                  onChange={(e) => setRepresentativeName(e.target.value)}
-                  placeholder="e.g., Juan Dela Cruz"
-                  className="w-full rounded-xl border border-[#CBD5E1] bg-[#F3F4F6] px-3 py-2 text-xs text-[#1E293B] focus:border-[#2563EB] focus:bg-white focus:outline-none"
-                />
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              <div>
-                <label
-                  htmlFor="brief-relationship"
-                  className="mb-1 block text-[11px] font-bold text-[#64748B]"
-                >
-                  Role / Relationship to Patient
-                </label>
-                <input
-                  id="brief-relationship"
-                  type="text"
-                  value={relationship}
-                  onChange={(e) => setRelationship(e.target.value)}
-                  placeholder="e.g., Spouse / Authorized Representative"
-                  className="w-full rounded-xl border border-[#CBD5E1] bg-[#F3F4F6] px-3 py-2 text-xs text-[#1E293B] focus:border-[#2563EB] focus:bg-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="brief-contact"
-                  className="mb-1 block text-[11px] font-bold text-[#64748B]"
-                >
-                  Mobile Number / Email (Optional)
-                </label>
-                <input
-                  id="brief-contact"
-                  type="text"
-                  value={contactInfo}
-                  onChange={(e) => setContactInfo(e.target.value)}
-                  placeholder="e.g., 0917-XXX-XXXX"
-                  className="w-full rounded-xl border border-[#CBD5E1] bg-[#F3F4F6] px-3 py-2 text-xs text-[#1E293B] focus:border-[#2563EB] focus:bg-white focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5 pt-1">
-              <span className="block text-[11px] font-bold text-[#64748B]">
-                Statutory Privilege Citation (Mutually Exclusive)
-              </span>
-              <div className="grid grid-cols-3 gap-1.5">
-                {(
-                  [
-                    { id: "regular", label: "Regular" },
-                    { id: "senior", label: "Senior Citizen (RA 9994)" },
-                    { id: "pwd", label: "PWD (RA 10754)" },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setStatutoryDiscountType(opt.id)}
-                    className={`cursor-pointer rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
-                      statutoryDiscountType === opt.id
-                        ? "bg-[#2563EB] text-white"
-                        : "border border-[#CBD5E1] bg-[#F3F4F6] text-[#1E293B] hover:border-[#2563EB]"
-                    }`}
+              {/* Modal Body */}
+              <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 bg-white">
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="brief-rep-name"
+                    className="block text-xs font-bold text-slate-800"
                   >
-                    {opt.label}
-                  </button>
-                ))}
+                    Representative / Patient Name
+                  </label>
+                  <input
+                    id="brief-rep-name"
+                    type="text"
+                    value={representativeName}
+                    onChange={(e) => setRepresentativeName(e.target.value)}
+                    placeholder="e.g., Juan Dela Cruz"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-xs sm:text-sm text-slate-900 focus:border-[#2563EB] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="brief-relationship"
+                      className="block text-xs font-bold text-slate-800"
+                    >
+                      Role / Relationship to Patient
+                    </label>
+                    <input
+                      id="brief-relationship"
+                      type="text"
+                      value={relationship}
+                      onChange={(e) => setRelationship(e.target.value)}
+                      placeholder="e.g., Spouse / Authorized Representative"
+                      className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-xs sm:text-sm text-slate-900 focus:border-[#2563EB] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="brief-contact"
+                      className="block text-xs font-bold text-slate-800"
+                    >
+                      Mobile Number / Email (Optional)
+                    </label>
+                    <input
+                      id="brief-contact"
+                      type="text"
+                      value={contactInfo}
+                      onChange={(e) => setContactInfo(e.target.value)}
+                      placeholder="e.g., 0917-XXX-XXXX"
+                      className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-xs sm:text-sm text-slate-900 focus:border-[#2563EB] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="shrink-0 px-5 py-3 border-t border-slate-200/80 bg-slate-50/70 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomize(false)}
+                  className="min-h-[44px] px-6 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs sm:text-sm font-bold shadow-sm transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
+                >
+                  Done
+                </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
-      </div>
 
       {/* Printable Formal Letter Document */}
       <NegotiationBriefDocument audit={result} ocr={ocr} meta={briefMeta} />

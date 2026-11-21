@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Pencil, PenLine } from "lucide-react";
-import { TIER_META, TrafficLightBadge } from "@/components/audit/TrafficLight";
+import { TIER_META } from "@/components/audit/TrafficLight";
 import { cn, formatPHP } from "@/lib/utils";
 import type {
   AuditedLineItem,
@@ -30,14 +30,14 @@ export function AuditLineItemRow({
   return (
     <li
       className={cn(
-        "rounded-2xl border bg-white p-3.5 shadow-xs transition-colors",
-        override ? "border-blue-200/90" : "border-slate-200/80"
+        "py-4 sm:py-5 px-2 sm:px-3 transition-colors hover:bg-slate-50/70 rounded-lg",
+        override && "bg-blue-50/30"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h4 className="text-sm font-bold leading-snug text-slate-900">
+            <h4 className="text-sm sm:text-base font-bold leading-snug text-slate-900">
               {item.description}
             </h4>
             {override && (
@@ -47,60 +47,81 @@ export function AuditLineItemRow({
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-600">
-            {item.category} · <span className="font-mono tabular-nums">{item.quantity}</span> × <span className="font-mono tabular-nums">{formatPHP(item.unit_price)}</span>
+          <p className="text-xs text-slate-500">
+            {item.category} ·{" "}
+            <span className="font-mono tabular-nums text-slate-700">
+              {item.quantity}
+            </span>{" "}
+            ×{" "}
+            <span className="font-mono tabular-nums text-slate-700">
+              {formatPHP(item.unit_price)}
+            </span>
           </p>
         </div>
 
-        <div className="shrink-0 space-y-1.5 text-right">
-          <div>
+        {/* Right Cluster: Status Dot + Price, followed by consistently aligned Edit action */}
+        <div className="shrink-0 flex items-center gap-2 sm:gap-3">
+          <div className="text-right">
             {totalChanged && original && (
-              <span className="block text-[11px] text-slate-500 line-through font-mono tabular-nums">
+              <span className="block text-[11px] text-slate-400 line-through font-mono tabular-nums">
                 {formatPHP(original.total_amount)}
               </span>
             )}
-            <span className="block text-sm font-black text-slate-900 font-mono tabular-nums">
-              {formatPHP(item.total_amount)}
-            </span>
+            <div className="inline-flex items-center gap-2">
+              <span
+                className={cn("h-2 w-2 rounded-full shrink-0", meta.bar)}
+                title={meta.label}
+                aria-label={meta.label}
+              />
+              <span className="text-sm sm:text-base font-black text-slate-900 font-mono tabular-nums whitespace-nowrap">
+                {formatPHP(item.total_amount)}
+              </span>
+            </div>
           </div>
-          <TrafficLightBadge tier={item.status} />
+
+          <span
+            className="hidden sm:block h-4 w-px bg-slate-200/80 shrink-0"
+            aria-hidden="true"
+          />
+
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${item.description}`}
+            title="Edit item"
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg min-h-[44px] min-w-[44px] p-2.5 text-slate-400 transition-colors hover:bg-blue-50/70 hover:text-[#2563EB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] shrink-0"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
       {item.flag_reason && (
-        <p
+        <div
           className={cn(
-            "mt-2.5 rounded-xl border px-3 py-2 text-xs leading-relaxed",
-            meta.callout
+            "mt-3 border-l-2 pl-3.5 py-1 text-xs leading-relaxed",
+            item.status === "covered" && "border-emerald-500 text-slate-600",
+            item.status === "review_worthy" && "border-amber-500 text-slate-600",
+            item.status === "out_of_pocket" && "border-rose-500 text-slate-600"
           )}
         >
-          {item.flag_reason}
+          <p>{item.flag_reason}</p>
           {item.suggested_deduction ? (
-            <span className="mt-1 block font-bold">
-              Potential savings: <span className="font-mono tabular-nums">{formatPHP(item.suggested_deduction)}</span>
-            </span>
+            <p className="mt-1.5 text-slate-500">
+              Potential savings:{" "}
+              <span className="font-bold font-mono tabular-nums text-amber-700">
+                {formatPHP(item.suggested_deduction)}
+              </span>
+            </p>
           ) : null}
-        </p>
+        </div>
       )}
 
       {override?.note && (
-        <p className="mt-2 text-xs italic leading-relaxed text-slate-600">
+        <p className="mt-2.5 text-xs italic leading-relaxed text-slate-600">
           Your note: {override.note}
         </p>
       )}
-
-      <div className="mt-2.5 flex justify-end">
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={`Edit ${item.description}`}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
-        >
-          <Pencil className="h-3 w-3" />
-          Edit
-        </button>
-      </div>
     </li>
   );
 }
-

@@ -54,6 +54,7 @@ export interface ScanState {
   completedResult: AuditEngineResult | null;
   startedAt: number | null;
   pageCount: number;
+  pages: ScanPagePayload[];
 }
 
 interface ScanBackgroundContextValue {
@@ -75,6 +76,7 @@ const defaultScanState: ScanState = {
   completedResult: null,
   startedAt: null,
   pageCount: 0,
+  pages: [],
 };
 
 const ScanBackgroundContext = createContext<ScanBackgroundContextValue | null>(
@@ -201,6 +203,7 @@ export function ScanBackgroundProvider({
         completedResult: null,
         startedAt,
         pageCount: pages.length,
+        pages,
       });
 
       try {
@@ -495,6 +498,9 @@ export function ScanBackgroundProvider({
       stage: "idle",
       statusMessage: "",
       errorMessage: null,
+      auditId: null,
+      completedResult: null,
+      pages: [],
     }));
   }, []);
 

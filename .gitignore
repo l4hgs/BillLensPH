@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.local.example
 
 # vercel
 .vercel
@@ -40,5 +42,21 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# worktrees
+# turbo & test artifacts
+.turbo/
+playwright-report/
+test-results/
+
+# OS & editor files
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# local agent scratch & worktrees
+.agents/
+.gemini/
 .worktrees/
