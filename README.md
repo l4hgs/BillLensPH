@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://billlens-ph-rccocantos.vercel.app/">
-    <img src="public/logo-header.png" alt="BillLens PH" width="220" />
+    <img src="public/logo-header-white.png" alt="BillLens PH" width="220" />
   </a>
 
   <h1>BillLens PH</h1>
@@ -56,28 +56,28 @@
 
 ## Key Screens & Workflows
 
-| Screen | Route | Purpose |
-| :--- | :--- | :--- |
-| **Home** | [`/`](https://billlens-ph-rccocantos.vercel.app/) | Server-hydrated landing overview with an interactive convex magnifying-lens hero and statutory inspection showcase. |
-| **Scan Hub** | [`/scanner`](https://billlens-ph-rccocantos.vercel.app/scanner) | Camera capture and multi-page dropzone with client-side WebP/JPEG compression, pre-scan PhilHealth/ward parameters, and persistent background OCR/audit progress. |
-| **Document Archive** | [`/audits`](https://billlens-ph-rccocantos.vercel.app/audits) | Searchable, time-filtered list of audited statements with total protection savings, thumbnails, and layout-matched skeletons. |
-| **Audit Studio** | `/audits/[id]` | Split-screen statement viewer paired with three-tier Traffic-Light categorization, non-destructive line-item overrides, parameter recalculation, and the **Ask Billy** drawer. |
-| **Negotiation Brief** | `/audits/[id]/brief` | Formal A4 portrait printable (`@media print`) dispute and Malasakit Center cover letter with signatory customization and plain-text copy. |
-| **PhilHealth Rates** | [`/rates`](https://billlens-ph-rccocantos.vercel.app/rates) | Searchable All-Case-Rates directory showing fixed benefit caps, HCI/PF splits, mandatory bundled inclusions, and AI-assisted rate discovery. |
-| **AI Chatbot (Billy)** | [`/chatbot`](https://billlens-ph-rccocantos.vercel.app/chatbot) | Full-height (`dvh`-aware) conversational billing navigator grounded in Philippine healthcare rules and optional active statement context. |
-| **Profile & Account** | [`/auth`](https://billlens-ph-rccocantos.vercel.app/auth) | Single-screen Sign In / Create Account view (Google OAuth & Email) and saved member defaults for contributor category, ward type, MDR/PIN, and facility level. |
+| Screen                 | Route                                                           | Purpose                                                                                                                                                                        |
+| :--------------------- | :-------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Home**               | [`/`](https://billlens-ph-rccocantos.vercel.app/)               | Server-hydrated landing overview with an interactive convex magnifying-lens hero and statutory inspection showcase.                                                            |
+| **Scan Hub**           | [`/scanner`](https://billlens-ph-rccocantos.vercel.app/scanner) | Camera capture and multi-page dropzone with client-side WebP/JPEG compression, pre-scan PhilHealth/ward parameters, and persistent background OCR/audit progress.              |
+| **Document Archive**   | [`/audits`](https://billlens-ph-rccocantos.vercel.app/audits)   | Searchable, time-filtered list of audited statements with total protection savings, thumbnails, and layout-matched skeletons.                                                  |
+| **Audit Studio**       | `/audits/[id]`                                                  | Split-screen statement viewer paired with three-tier Traffic-Light categorization, non-destructive line-item overrides, parameter recalculation, and the **Ask Billy** drawer. |
+| **Negotiation Brief**  | `/audits/[id]/brief`                                            | Formal A4 portrait printable (`@media print`) dispute and Malasakit Center cover letter with signatory customization and plain-text copy.                                      |
+| **PhilHealth Rates**   | [`/rates`](https://billlens-ph-rccocantos.vercel.app/rates)     | Searchable All-Case-Rates directory showing fixed benefit caps, HCI/PF splits, mandatory bundled inclusions, and AI-assisted rate discovery.                                   |
+| **AI Chatbot (Billy)** | [`/chatbot`](https://billlens-ph-rccocantos.vercel.app/chatbot) | Full-height (`dvh`-aware) conversational billing navigator grounded in Philippine healthcare rules and optional active statement context.                                      |
+| **Profile & Account**  | [`/auth`](https://billlens-ph-rccocantos.vercel.app/auth)       | Single-screen Sign In / Create Account view (Google OAuth & Email) and saved member defaults for contributor category, ward type, MDR/PIN, and facility level.                 |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Framework & Language** | [Next.js 16.4.6](https://nextjs.org/) (App Router, Turbopack), [React 19.3](https://react.dev/), [TypeScript 5](https://www.typescriptlang.org/) |
-| **Styling & UI** | [Tailwind CSS v4](https://tailwindcss.com/), [Lucide React](https://lucide.dev/) (full-width non-bento editorial layout, `44px` tap targets, unified auto-dismissing toasts) |
-| **Backend, Auth & Storage** | [Supabase](https://supabase.com/) (PostgreSQL, SSR Cookie Auth, Row-Level Security, private `bill-uploads` bucket) |
-| **AI & Streaming** | Google Gemini via [Vercel AI SDK](https://sdk.vercel.ai/) (`ai`, `@ai-sdk/google`, `@ai-sdk/react`) |
-| **Quality & Testing** | [Vitest 5](https://vitest.dev/), [ESLint 9](https://eslint.org/) (`eslint-config-next`) |
+| Layer                       | Technologies                                                                                                                                                                 |
+| :-------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Framework & Language**    | [Next.js 16.4.6](https://nextjs.org/) (App Router, Turbopack), [React 19.3](https://react.dev/), [TypeScript 5](https://www.typescriptlang.org/)                             |
+| **Styling & UI**            | [Tailwind CSS v4](https://tailwindcss.com/), [Lucide React](https://lucide.dev/) (full-width non-bento editorial layout, `44px` tap targets, unified auto-dismissing toasts) |
+| **Backend, Auth & Storage** | [Supabase](https://supabase.com/) (PostgreSQL, SSR Cookie Auth, Row-Level Security, private `bill-uploads` bucket)                                                           |
+| **AI & Streaming**          | Google Gemini via [Vercel AI SDK](https://sdk.vercel.ai/) (`ai`, `@ai-sdk/google`, `@ai-sdk/react`)                                                                          |
+| **Quality & Testing**       | [Vitest 5](https://vitest.dev/), [ESLint 9](https://eslint.org/) (`eslint-config-next`)                                                                                      |
 
 ---
 
