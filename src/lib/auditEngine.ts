@@ -138,7 +138,7 @@ export function normalizeEligibilitySnapshot(
 }
 
 const LUMP_SUM_DEPARTMENT_PATTERN =
-  /^\s*(central\s+suppl(?:y|ies)(\s+room)?|csr|medical\s+suppl(?:y|ies)|suppl(?:y|ies)|laborator(?:y|ies)|lab(\s+charges?|\s+fees?)?|dept\.?\s+of\s+clinical\s+laborator(?:y|ies)|clinical\s+laborator(?:y|ies)|pharmacy(\s*[-–—]\s*main|\s+charges?|\s+fees?)?|drugs?\s*(?:&|and)\s*medicines?)\s*$/i;
+  /^\s*(central\s+suppl(?:y|ies)(\s+room)?(\s*[/(-].*)?|csr(\s*[/(-].*)?|medical\s+suppl(?:y|ies)(\s*(charges?|fees?|room|[/(-].*))?|suppl(?:y|ies)(\s*(charges?|fees?))?|laborator(?:y|ies)(\s*(charges?|fees?|&?\s*diagnostics?|[/(-].*))?|lab(\s+charges?|\s+fees?|\s*[/(-].*)?|dept\.?\s+of\s+(clinical\s+)?laborator(?:y|ies).*|clinical\s+laborator(?:y|ies).*|pharmacy(\s*[-–—/(-].*|\s+(charges?|fees?))?|drugs?\s*(?:&|and)\s*medicines?(\s*(charges?|fees?|[/(-].*))?)\s*$/i;
 
 function isLumpSumDepartmentCharge(description: string): boolean {
   return LUMP_SUM_DEPARTMENT_PATTERN.test((description || "").trim());
@@ -463,7 +463,10 @@ export function runAuditEngine(
         isItemizedVerification = true;
         matchedPkgCode = matchedPackages[0]?.code;
         matchedPkgName = matchedPackages[0]?.keyword;
-        flagReason = `Itemized Verification Requested: Lump-sum "${item.description}" (${formatPHP(itemBalance)}) at a private/non-NBB facility cannot be automatically written off. Request itemized charge slips from billing to verify no duplicate or unadministered items.`;
+        const pkgLabel = matchedPackages[0]
+          ? `${matchedPackages[0].code} (${matchedPackages[0].keyword})`
+          : "the matched PhilHealth Case Rate";
+        flagReason = `Lump-sum charge of ${formatPHP(itemBalance)} includes items or services typically bundled under PhilHealth Case Rate ${pkgLabel}. Because this is a non-NBB/private admission, we request an itemized charge slip breakdown to verify against duplicate or unadministered items.`;
         suggestedDeduction = 0;
         requestedAdjustment = 0;
       } else {
@@ -509,12 +512,7 @@ export function runAuditEngine(
       (statutoryRule.eligible_categories.includes("Room & Board") &&
         FACILITY_SERVICE_CATEGORIES.has(item.category));
 
-    if (
-      !isUnbundled &&
-      !isItemizedVerification &&
-      isSeniorOrPwd &&
-      isCategoryEligible
-    ) {
+    if (!isUnbundled && isSeniorOrPwd && isCategoryEligible) {
       statutoryEligible = true;
       const currentDiscount = item.discount_applied || 0;
       const philhealthOnItem = item.philhealth_deducted || 0;
@@ -567,7 +565,9 @@ export function runAuditEngine(
         currentDiscount > 0 &&
         currentDiscount < maxPossibleRelief - 1
       ) {
-        status = "review_worthy";
+        if (!isItemizedVerification) {
+          status = "review_worthy";
+        }
         hasLineLevelSequenceFlag = true;
         const sequenceOvercharge = round2(
           Math.max(0, maxPossibleRelief - currentDiscount)
@@ -575,6 +575,7 @@ export function runAuditEngine(
         suggestedDeduction = round2(
           (suggestedDeduction || 0) + sequenceOvercharge
         );
+        requestedAdjustment = -suggestedDeduction;
         estimatedSeniorSavings = round2(
           estimatedSeniorSavings + sequenceOvercharge
         );
@@ -596,11 +597,14 @@ export function runAuditEngine(
         currentDiscount <
         expectedDiscount * statutoryRule.incomplete_threshold
       ) {
-        status = "review_worthy";
+        if (!isItemizedVerification) {
+          status = "review_worthy";
+        }
         const missedRelief = round2(
           Math.max(0, maxPossibleRelief - currentDiscount)
         );
         suggestedDeduction = round2((suggestedDeduction || 0) + missedRelief);
+        requestedAdjustment = -suggestedDeduction;
         estimatedSeniorSavings = round2(estimatedSeniorSavings + missedRelief);
         const vatNote =
           vatTreatment === "vat_inclusive_goods"
@@ -1102,10 +1106,11 @@ export function runAuditEngine(
         : `PC-${claimablePackages[0].circular_id}`
       : undefined);
 
-  const reconciledBalanceLabel =
-    extracted.philhealth_total > 0
-      ? "Reconciled Balance Due (After PhilHealth Case Rate)"
-      : "Reconciled Balance Due (Before PhilHealth Case Rate)";
+  const hasPhilHealthAccounted =
+    extracted.philhealth_total > 0 || caseRateShortfall > 0;
+  const reconciledBalanceLabel = hasPhilHealthAccounted
+    ? "Reconciled Balance Due (After PhilHealth Case Rate)"
+    : "Reconciled Balance Due (Before PhilHealth Case Rate)";
 
   return {
     audit_id: options.auditId,

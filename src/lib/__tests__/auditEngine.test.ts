@@ -1665,12 +1665,18 @@ describe("Versioned packages & Multi-page OCR merge", () => {
     });
     expect(privateAudit.is_nbb_eligible).toBe(false);
     expect(privateAudit.line_items[0].status).toBe("itemized_verification");
-    expect(privateAudit.line_items[0].requested_adjustment).toBe(0);
+    expect(privateAudit.line_items[0].requested_adjustment).toBeCloseTo(
+      -3222.86,
+      2
+    );
     expect(privateAudit.line_items[1].status).toBe("itemized_verification");
-    expect(privateAudit.line_items[1].requested_adjustment).toBe(0);
+    expect(privateAudit.line_items[1].requested_adjustment).toBeCloseTo(
+      -970,
+      2
+    );
     expect(privateAudit.disputed_overcharge_total).toBe(0);
     expect(privateAudit.reconciled_balance_label).toBe(
-      "Reconciled Balance Due (Before PhilHealth Case Rate)"
+      "Reconciled Balance Due (After PhilHealth Case Rate)"
     );
 
     const privateBrief = buildPlainTextNegotiationBrief(privateAudit, {
@@ -1715,5 +1721,210 @@ describe("Versioned packages & Multi-page OCR merge", () => {
     expect(govBrief).toContain("Malasakit Center");
     expect(govBrief).toContain("11463");
     expect(govBrief).toContain("PhilHealth Circular No. 2024-0037");
+  });
+
+  it("handles St. Jude Medical Center - Batangas private SOA (RVS 44950, ₱97,500 gross, ₱15,000 deposit, ₱11,280 CSR)", () => {
+    const pkg44950 = toCatalogPackage({
+      case_code: "44950",
+      procedure_keyword: "Open Appendectomy",
+      circular_id: "2024-0037",
+      circular_number: "PC-2024-0037",
+      effective_from: "2025-01-01",
+      is_verified: true,
+      hci_fee: 28080,
+      prof_fee: 18720,
+      total_case_rate: 46800,
+      inclusive_items: ["Standard appendectomy surgical instrument set"],
+    });
+
+    const stJudeBill: ExtractedBillData = {
+      hospital_name: "ST. JUDE MEDICAL CENTER - BATANGAS",
+      facility_ownership: "private",
+      admission_date: "2025-04-10",
+      case_rate_codes_detected: ["44950"],
+      is_senior_or_pwd: false,
+      statutory_discount_type: "regular",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Central Supply Room",
+          category: "Medical Supplies",
+          quantity: 1,
+          unit_price: 11280,
+          total_amount: 11280,
+        },
+        {
+          id: "item-2",
+          description: "Operating Room & Surgical Care",
+          category: "Operating Room",
+          quantity: 1,
+          unit_price: 46220,
+          total_amount: 46220,
+        },
+        {
+          id: "item-3",
+          description: "Professional Fee - Surgeon & Anesthesiologist",
+          category: "Professional Fees",
+          quantity: 1,
+          unit_price: 40000,
+          total_amount: 40000,
+        },
+      ],
+      gross_total: 97500,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      cash_or_hmo_payments_total: 15000,
+      net_balance_due: 82500,
+    };
+
+    const audit = runAuditEngine(stJudeBill, {
+      auditId: "st-jude-batangas-44950",
+      referencePackages: [pkg44950],
+      statutoryDiscountType: "regular",
+      eligibilitySnapshot: {
+        facility_ownership: "private",
+        accommodation_type: "non_basic_private",
+        contributor_type: "direct",
+        has_mdr_or_pin: true,
+        facility_level: "level_2",
+      },
+    });
+
+    const csr = audit.line_items.find(
+      (i) => i.description === "Central Supply Room"
+    );
+    expect(csr?.status).toBe("itemized_verification");
+    expect(csr?.requested_adjustment).toBe(0);
+    expect(csr?.suggested_deduction).toBe(0);
+    expect(csr?.flag_reason).toContain("non-NBB/private admission");
+    expect(csr?.flag_reason).toContain("44950");
+
+    expect(audit.disputed_overcharge_total).toBe(0);
+    expect(audit.case_rate_shortfall).toBe(46800);
+    expect(audit.fair_out_of_pocket).toBe(35700);
+    expect(audit.reconciled_balance_label).toBe(
+      "Reconciled Balance Due (After PhilHealth Case Rate)"
+    );
+
+    const brief = buildPlainTextNegotiationBrief(audit, {
+      representativeName: "Juan Dela Cruz",
+      relationship: "Patient",
+      contactInfo: "0917-123-4567",
+      preparedDate: "Apr 12, 2025",
+      isSeniorOrPwd: false,
+      statutoryDiscountType: "regular",
+    });
+    expect(brief).toContain(
+      "Reconciled Balance Due (After PhilHealth Case Rate)"
+    );
+    expect(brief).not.toContain("Malasakit Center");
+  });
+
+  it("applies RA 9994 VAT exemption + 20% Senior discount on itemized_verification items for St. Jude Senior Citizen SOA", () => {
+    const pkg44950 = toCatalogPackage({
+      case_code: "44950",
+      procedure_keyword: "Open Appendectomy",
+      circular_id: "2024-0037",
+      circular_number: "PC-2024-0037",
+      effective_from: "2025-01-01",
+      is_verified: true,
+      hci_fee: 28080,
+      prof_fee: 18720,
+      total_case_rate: 46800,
+      inclusive_items: ["Standard appendectomy surgical instrument set"],
+    });
+
+    const stJudeSeniorBill: ExtractedBillData = {
+      hospital_name: "ST. JUDE MEDICAL CENTER - BATANGAS",
+      facility_ownership: "private",
+      admission_date: "2025-04-10",
+      case_rate_codes_detected: ["44950"],
+      is_senior_or_pwd: true,
+      statutory_discount_type: "senior",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Central Supply Room",
+          category: "Medical Supplies",
+          quantity: 1,
+          unit_price: 11280,
+          total_amount: 11280,
+        },
+        {
+          id: "item-2",
+          description: "Pharmacy - Main",
+          category: "Drugs/Medicines",
+          quantity: 1,
+          unit_price: 14620,
+          total_amount: 14620,
+        },
+        {
+          id: "item-3",
+          description: "Laboratory",
+          category: "Laboratory/Diagnostics",
+          quantity: 1,
+          unit_price: 4850,
+          total_amount: 4850,
+        },
+        {
+          id: "item-4",
+          description: "Operating Room & Private Room",
+          category: "Operating Room",
+          quantity: 1,
+          unit_price: 36750,
+          total_amount: 36750,
+        },
+        {
+          id: "item-5",
+          description: "Professional Fee - Surgeon",
+          category: "Professional Fees",
+          quantity: 1,
+          unit_price: 30000,
+          total_amount: 30000,
+        },
+      ],
+      gross_total: 97500,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      cash_or_hmo_payments_total: 15000,
+      net_balance_due: 82500,
+    };
+
+    const audit = runAuditEngine(stJudeSeniorBill, {
+      auditId: "st-jude-senior-44950",
+      referencePackages: [pkg44950],
+      statutoryDiscountType: "senior",
+      eligibilitySnapshot: {
+        facility_ownership: "private",
+        accommodation_type: "non_basic_private",
+        contributor_type: "direct",
+        has_mdr_or_pin: true,
+        facility_level: "level_2",
+      },
+    });
+
+    const csr = audit.line_items.find((i) => i.id === "item-1");
+    const pharmacy = audit.line_items.find((i) => i.id === "item-2");
+    const lab = audit.line_items.find((i) => i.id === "item-3");
+
+    expect(csr?.status).toBe("itemized_verification");
+    expect(csr?.suggested_deduction).toBeCloseTo(3222.86, 2);
+    expect(csr?.requested_adjustment).toBeCloseTo(-3222.86, 2);
+    expect(csr?.flag_reason).toContain("itemized charge slip");
+    expect(csr?.flag_reason).toContain("3,222.86");
+
+    expect(pharmacy?.status).toBe("itemized_verification");
+    expect(pharmacy?.suggested_deduction).toBeCloseTo(4177.14, 2);
+    expect(pharmacy?.requested_adjustment).toBeCloseTo(-4177.14, 2);
+
+    expect(lab?.status).toBe("itemized_verification");
+    expect(lab?.suggested_deduction).toBeCloseTo(970, 2);
+    expect(lab?.requested_adjustment).toBeCloseTo(-970, 2);
+
+    expect(audit.statutory_reconciliation?.total_entitled).toBeCloseTo(21720, 2);
+    expect(audit.senior_pwd_savings).toBeCloseTo(21720, 2);
+    expect(audit.case_rate_shortfall).toBe(46800);
+    expect(audit.disputed_overcharge_total).toBe(0);
+    expect(audit.fair_out_of_pocket).toBeCloseTo(13980, 2);
   });
 });

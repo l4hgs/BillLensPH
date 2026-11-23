@@ -79,9 +79,12 @@ export function buildPlainTextNegotiationBrief(
       audit.detected_case_packages[0]?.circular_number ??
       audit.detected_case_packages[0]?.circular_id
   );
+  const hasPhilHealthAccounted =
+    (audit.statutory_reconciliation?.philhealth_deducted ?? 0) > 0 ||
+    (audit.case_rate_shortfall ?? 0) > 0;
   const reconciledBalanceLabel =
     audit.reconciled_balance_label ||
-    ((audit.statutory_reconciliation?.philhealth_deducted ?? 0) > 0
+    (hasPhilHealthAccounted
       ? "Reconciled Balance Due (After PhilHealth Case Rate)"
       : "Reconciled Balance Due (Before PhilHealth Case Rate)");
 
@@ -271,11 +274,13 @@ export function NegotiationBriefDocument({
       audit.detected_case_packages[0]?.circular_number ??
       audit.detected_case_packages[0]?.circular_id
   );
+  const hasPhilHealthAccounted =
+    (ocr?.philhealth_total ??
+      audit.statutory_reconciliation?.philhealth_deducted ??
+      0) > 0 || (audit.case_rate_shortfall ?? 0) > 0;
   const reconciledBalanceLabel =
     audit.reconciled_balance_label ||
-    ((ocr?.philhealth_total ??
-      audit.statutory_reconciliation?.philhealth_deducted ??
-      0) > 0
+    (hasPhilHealthAccounted
       ? "Reconciled Balance Due (After PhilHealth Case Rate)"
       : "Reconciled Balance Due (Before PhilHealth Case Rate)");
 

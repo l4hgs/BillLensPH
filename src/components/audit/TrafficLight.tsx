@@ -58,7 +58,7 @@ export const TIER_META: Record<
     callout: "bg-amber-50 border-amber-200 text-amber-900",
   },
   itemized_verification: {
-    label: "Itemized Verification Requested",
+    label: "Verify Itemization",
     short: "Verify",
     description: "Request itemized charge slips from billing",
     badge: "primary",
@@ -143,9 +143,15 @@ export function TrafficLightSummary({
 
   useEffect(() => {
     const updateIndicator = () => {
-      const key = activeTier ?? "all";
-      const el = tabRefs.current[key];
-      if (!el) return;
+      if (!activeTier) {
+        setIndicatorStyle(null);
+        return;
+      }
+      const el = tabRefs.current[activeTier];
+      if (!el) {
+        setIndicatorStyle(null);
+        return;
+      }
       setIndicatorStyle({
         left: el.offsetLeft,
         top: el.offsetTop,
@@ -239,7 +245,7 @@ export function TrafficLightSummary({
         ref={tablistRef}
         role="tablist"
         aria-label="Filter line items by audit tier"
-        className="relative grid grid-cols-2 lg:grid-cols-5 gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60"
+        className="relative grid grid-cols-2 lg:grid-cols-4 gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60"
       >
         {indicatorStyle && (
           <div
@@ -253,39 +259,29 @@ export function TrafficLightSummary({
             }}
           />
         )}
-        {(
-          [
-            {
-              id: null,
-              label: "All",
-              count: items.length,
-              amount: totalAmount,
-              dot: null,
-            },
-            ...TIER_ORDER.map((tier) => {
-              const found = stats.find((s) => s.tier === tier);
-              return {
-                id: tier,
-                label: TIER_META[tier].label,
-                count: found?.count ?? 0,
-                amount: found?.amount ?? 0,
-                dot: TIER_META[tier].bar,
-              };
-            }),
-          ] as const
-        ).map((tab) => {
+        {TIER_ORDER.map((tier) => {
+          const found = stats.find((s) => s.tier === tier);
+          const tab = {
+            id: tier,
+            label: TIER_META[tier].label,
+            description: TIER_META[tier].description,
+            count: found?.count ?? 0,
+            amount: found?.amount ?? 0,
+            dot: TIER_META[tier].bar,
+          };
           const isSelected = activeTier === tab.id;
-          const key = tab.id ?? "all";
           return (
             <button
-              key={tab.label}
+              key={tab.id}
               ref={(el) => {
-                tabRefs.current[key] = el;
+                tabRefs.current[tab.id] = el;
               }}
               type="button"
               role="tab"
               aria-selected={isSelected}
-              onClick={() => onSelectTier(tab.id)}
+              aria-label={`${tab.label}: ${tab.count} items, ${formatPHP(tab.amount)}`}
+              title={tab.description}
+              onClick={() => onSelectTier(isSelected ? null : tab.id)}
               className={cn(
                 "relative z-10 min-h-[46px] sm:min-h-[54px] px-2.5 sm:px-3 py-1.5 rounded-lg border border-transparent text-left transition-colors duration-200 ease-out motion-reduce:transition-none cursor-pointer flex flex-col justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]",
                 isSelected
@@ -293,11 +289,9 @@ export function TrafficLightSummary({
                   : "text-slate-600 hover:text-slate-900"
               )}
             >
-              <div className="flex items-center justify-between gap-1.5 w-full">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold truncate">
-                  {tab.dot && (
-                    <span className={cn("h-2 w-2 rounded-full shrink-0", tab.dot)} />
-                  )}
+              <div className="flex items-center justify-between gap-1.5 w-full min-w-0">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold min-w-0">
+                  <span className={cn("h-2 w-2 rounded-full shrink-0", tab.dot)} />
                   <span className="truncate">{tab.label}</span>
                 </span>
                 <span
