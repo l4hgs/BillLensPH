@@ -61,14 +61,15 @@ function resolveSafeRedirectBase(request: Request, requestUrl: URL): string {
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const { searchParams, origin } = requestUrl;
+  const { searchParams } = requestUrl;
+  const redirectBase = resolveSafeRedirectBase(request, requestUrl);
   const code = searchParams.get("code");
   const oauthError =
     searchParams.get("error_description") || searchParams.get("error");
 
   if (oauthError) {
     return NextResponse.redirect(
-      `${origin}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
+      `${redirectBase}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
         oauthError
       )}`
     );
@@ -81,9 +82,11 @@ export async function GET(request: Request) {
     const resolvedNext =
       searchParams.get("next") ||
       (cookieNext ? decodeURIComponent(cookieNext) : "/scanner");
-    const finalNext = resolvedNext.startsWith("/") ? resolvedNext : "/scanner";
+    const finalNext =
+      resolvedNext.startsWith("/") && !resolvedNext.startsWith("//")
+        ? resolvedNext
+        : "/scanner";
 
-    const redirectBase = resolveSafeRedirectBase(request, requestUrl);
     const redirectResponse = NextResponse.redirect(
       `${redirectBase}${finalNext}`
     );
@@ -224,7 +227,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(
-      `${origin}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
+      `${redirectBase}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
         error?.message || "Failed to exchange OAuth code for session."
       )}`
     );
@@ -232,7 +235,7 @@ export async function GET(request: Request) {
 
   // Return the user to login with instructions
   return NextResponse.redirect(
-    `${origin}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
+    `${redirectBase}/auth?error=auth_exchange_failed&message=${encodeURIComponent(
       "No authorization code received from OAuth callback."
     )}`
   );

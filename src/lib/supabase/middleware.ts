@@ -19,6 +19,20 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Defensive OAuth PKCE fallback: if Supabase ever redirects to `/?code=...`
+  // (e.g., Site URL fallback), forward to `/auth/callback` BEFORE `getUser()`
+  // can run and wipe the PKCE `code_verifier` cookie.
+  if (
+    request.nextUrl.pathname === "/" &&
+    (request.nextUrl.searchParams.has("code") ||
+      request.nextUrl.searchParams.has("error") ||
+      request.nextUrl.searchParams.has("error_description"))
+  ) {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+    return NextResponse.redirect(callbackUrl);
+  }
+
   // Never run `getUser()` in middleware on `/auth/callback`: if an expired session
   // cookie is present alongside a fresh PKCE `code_verifier` cookie, a failed
   // `getUser()` triggers `_removeSession()` -> `removeAllPKCEVerifiers()`, which

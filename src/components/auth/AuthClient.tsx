@@ -127,11 +127,27 @@ export function AuthClient({ initialUser = null }: { initialUser?: User | null }
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const next = params.get("next");
-      if (next && next.startsWith("/")) {
+      if (next && next.startsWith("/") && !next.startsWith("//")) {
         return next;
       }
     }
     return "/scanner";
+  };
+
+  const buildAuthCallbackUrl = (nextPath?: string) => {
+    const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(
+      /\/+$/,
+      ""
+    );
+    const origin =
+      typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : envSiteUrl || "";
+    const callbackUrl = new URL("/auth/callback", origin);
+    if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
+      callbackUrl.searchParams.set("next", nextPath);
+    }
+    return callbackUrl.toString();
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -153,7 +169,7 @@ export function AuthClient({ initialUser = null }: { initialUser?: User | null }
             data: {
               full_name: fullName,
             },
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            emailRedirectTo: buildAuthCallbackUrl(getRedirectDestination()),
           },
         });
 
@@ -216,7 +232,7 @@ export function AuthClient({ initialUser = null }: { initialUser?: User | null }
         destination
       )}; path=/; max-age=600; SameSite=Lax`;
       document.cookie = `billlens_auth_mode=${authMode}; path=/; max-age=600; SameSite=Lax`;
-      const redirectTo = `${window.location.origin}/auth/callback`;
+      const redirectTo = buildAuthCallbackUrl(destination);
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
