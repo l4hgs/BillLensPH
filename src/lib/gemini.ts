@@ -1,6 +1,7 @@
 import type {
   ExtractedBillData,
   ExtractedLineItem,
+  FacilityOwnership,
   StatutoryDiscountType,
 } from "@/types/audit";
 import {
@@ -59,6 +60,38 @@ export function detectVatExemptFromDescription(description: string): boolean {
   return false;
 }
 
+/**
+ * Infers whether a Philippine healthcare facility is government-owned or private
+ * from header cues. Defaults safely to `"private"` when ambiguous so NBB zero
+ * co-payment write-offs are never over-claimed at private hospitals.
+ */
+export function inferFacilityOwnershipFromHospitalName(
+  hospitalName?: string
+): FacilityOwnership {
+  const name = (hospitalName || "").trim();
+  if (!name) return "private";
+
+  // Strong private corporate/brand indicators take precedence
+  if (
+    /\b(inc\.?|incorporated|corp\.?|corporation|doctors'?(\s+hospital|\s+medical)?|medical\s+city|st\.?\s*luke'?s|makati\s+medical|chong\s+hua|asian\s+hospital|cardinal\s+santos|manila\s+doctors|chinese\s+general|de\s+los\s+santos|our\s+lady\s+of\s+lourdes|fe\s+del\s+mundo|university\s+of\s+santo\s+tomas|ust\s+hospital|mcu[-\s]?fdt)\b/i.test(
+      name
+    )
+  ) {
+    return "private";
+  }
+
+  // Government / DOH / LGU / state hospital indicators
+  if (
+    /\b(department\s+of\s+health|\bdoh\b|provincial\s+hospital|district\s+hospital|municipal\s+hospital|city\s+hospital|regional\s+(medical\s+center|hospital|training)|philippine\s+general\s+hospital|\bpgh\b|osman|ospital\s+ng|jose\s+reyes|east\s+avenue\s+medical|national\s+kidney|lung\s+center\s+of\s+the\s+philippines|philippine\s+heart\s+center|veterans\s+memorial|vicente\s+sotto|southern\s+philippines\s+medical|bicol\s+regional|western\s+visayas\s+medical|corazon\s+locsin|amang\s+rodriguez|quirino\s+memorial|rizal\s+medical\s+center|san\s+lazaro\s+hospital|tala\s+hospital|public\s+hospital|government\s+hospital|lgu\s+hospital)\b/i.test(
+      name
+    )
+  ) {
+    return "government";
+  }
+
+  return "private";
+}
+
 const SYSTEM_PROMPT = `
 You are the BillLens PH Medical Billing Vision Engine, specialized in parsing Philippine Hospital Itemized Statements of Account (ISAs), Statements of Account (SOAs), and PhilHealth Claim Forms (CF2/CF3).
 
@@ -66,7 +99,8 @@ TASK:
 Examine the uploaded bill/statement image and extract all structured billing data into valid JSON matching the exact schema specified below.
 
 PHILIPPINE BILLING CONVENTIONS TO DETECT:
-1. Hospital Header: Institution name (e.g., St. Luke's, The Medical City, Makati Medical Center, PGH, Chong Hua, provincial DOH hospitals), patient name, statement/SOA number, admission date, discharge date.
+1. Hospital Header & Dates: Institution name (e.g., St. Luke's, The Medical City, Makati Medical Center, PGH, Chong Hua, provincial DOH hospitals), patient name, statement/SOA number, and PRIORITIZE extracting \`admission_date\` (YYYY-MM-DD) alongside \`discharge_date\` (YYYY-MM-DD) because PhilHealth circular rates depend on the exact date of admission.
+   - Infer \`facility_ownership\`: set \`"government"\` ONLY if the header clearly identifies a DOH, LGU, provincial, district, municipal, city, regional, or public/state hospital (e.g., PGH, Ospital ng Maynila, Provincial Hospital, DOH Regional Medical Center). Otherwise set \`"private"\` (e.g., Inc., Corporation, Doctors Hospital, Medical City, St. Luke's, or when unclear).
 2. Case Codes / Diagnoses: Look for RVS codes (e.g., 47562, 44970, 93458, 59400, 59510, 90935) or ICD-10 codes (e.g., J18.9, A97.1, A09.9), or procedure names.
 3. Tabular Itemized Charges:
    - Drugs and Medicines (antibiotics, IV fluids, analgesics, anesthetics)
@@ -106,6 +140,7 @@ REQUIRED JSON OUTPUT FORMAT:
 Respond with ONLY valid JSON (no markdown formatting, no code fences, just the raw JSON object):
 {
   "hospital_name": "String",
+  "facility_ownership": "government" | "private",
   "patient_name": "String or null",
   "admission_date": "YYYY-MM-DD or string or null",
   "discharge_date": "YYYY-MM-DD or string or null",
@@ -411,6 +446,7 @@ export function mergeExtractedBills(
   const codeSet = new Set<string>();
 
   let hospitalName = DEFAULT_HOSPITAL_NAME;
+  let facilityOwnership: FacilityOwnership | undefined;
   let patientName: string | undefined;
   let admissionDate: string | undefined;
   let dischargeDate: string | undefined;
@@ -432,6 +468,13 @@ export function mergeExtractedBills(
       page.hospital_name !== DEFAULT_HOSPITAL_NAME
     ) {
       hospitalName = page.hospital_name;
+    }
+    if (
+      !facilityOwnership &&
+      (page.facility_ownership === "government" ||
+        page.facility_ownership === "private")
+    ) {
+      facilityOwnership = page.facility_ownership;
     }
     if (!patientName && page.patient_name) patientName = page.patient_name;
     if (!admissionDate && page.admission_date)
@@ -553,6 +596,9 @@ export function mergeExtractedBills(
 
   return {
     hospital_name: hospitalName,
+    facility_ownership:
+      facilityOwnership ??
+      inferFacilityOwnershipFromHospitalName(hospitalName),
     patient_name: patientName,
     admission_date: admissionDate,
     discharge_date: dischargeDate,
@@ -695,10 +741,20 @@ export function sanitizeExtractedBill(
 
   const grossTotal = Number(data.gross_total) || computedGross;
 
+  const hospitalName = String(
+    data.hospital_name || "Philippine Healthcare Institution"
+  ).trim();
+  const explicitOwnership =
+    data.facility_ownership === "government" ||
+    data.facility_ownership === "private"
+      ? data.facility_ownership
+      : undefined;
+  const resolvedOwnership: FacilityOwnership =
+    explicitOwnership ?? inferFacilityOwnershipFromHospitalName(hospitalName);
+
   return {
-    hospital_name: String(
-      data.hospital_name || "Philippine Healthcare Institution"
-    ).trim(),
+    hospital_name: hospitalName,
+    facility_ownership: resolvedOwnership,
     patient_name: data.patient_name
       ? String(data.patient_name).trim()
       : undefined,

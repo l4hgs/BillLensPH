@@ -397,8 +397,7 @@ export function AuditCopilotDrawer({
               alt="Billy"
               width={24}
               height={24}
-              className="w-5 h-5 lg:w-5.5 lg:h-5.5 object-contain transition-transform duration-200 group-hover:scale-105 drop-shadow-xs"
-              style={{ width: "auto", height: "auto" }}
+              className="h-5 w-auto lg:h-[22px] object-contain transition-transform duration-200 group-hover:scale-105 drop-shadow-xs"
             />
           </div>
 

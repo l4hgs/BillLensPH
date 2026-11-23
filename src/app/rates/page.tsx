@@ -19,6 +19,7 @@ import { useToast } from "@/components/providers/ToastProvider";
 import { formatPHP, cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { loadPackageCatalog } from "@/lib/packageCatalog";
+import { CircularCompilerModal } from "@/components/rates/CircularCompilerModal";
 import type { CatalogPackage } from "@/types/audit";
 
 export interface PhilHealthPackage {
@@ -166,6 +167,7 @@ export default function RatesPage() {
 
   // Admin modal state
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showCompilerModal, setShowCompilerModal] = useState(false);
   const [adminMode, setAdminMode] = useState<"single" | "csv">("single");
   const [saving, setSaving] = useState(false);
   const [adminFeedback, setAdminFeedback] = useState<{
@@ -534,6 +536,16 @@ export default function RatesPage() {
 
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCompilerModal(true)}
+              className="min-h-[44px] rounded-full text-xs font-bold gap-1.5"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Import Circular (PDF / Text)</span>
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -1096,6 +1108,17 @@ export default function RatesPage() {
           </div>,
           document.body
         )}
+
+      <CircularCompilerModal
+        open={showCompilerModal}
+        onClose={() => setShowCompilerModal(false)}
+        onPublished={({ publishedCount, supersededCount, circular_number }) => {
+          void refreshCatalog();
+          toast.success(
+            `Published ${publishedCount} verified rate${publishedCount === 1 ? "" : "s"} from ${circular_number}${supersededCount > 0 ? ` (${supersededCount} superseded)` : ""}`
+          );
+        }}
+      />
     </div>
   );
 }

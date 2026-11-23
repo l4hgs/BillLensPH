@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   Search,
-  ChevronRight,
   ShieldCheck,
   Camera,
   FolderArchive,
@@ -12,11 +12,14 @@ import {
   FileText,
   X,
   ArrowRight,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { cn, formatPHP } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { formatFileSize } from "@/lib/imageCompression";
 import { ArchivePageSkeleton } from "@/components/audit/AuditSkeletons";
+import { useToast } from "@/components/providers/ToastProvider";
 import type { AuditEngineResult } from "@/types/audit";
 
 interface AuditDoc {
@@ -98,6 +101,7 @@ function AuditThumbnail({
 }
 
 export default function DocumentArchivePage() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<
     "Today" | "This week" | "All Documents" | "Archive"
   >("This week");
@@ -110,18 +114,60 @@ export default function DocumentArchivePage() {
     total: number;
     auditId: string;
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AuditDoc | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // Dismiss statement preview modal with Escape key
+  // Dismiss preview or delete confirmation modal with Escape key
   useEffect(() => {
-    if (!previewModal) return;
+    if (!previewModal && !deleteTarget) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setPreviewModal(null);
+        if (deleteTarget && !isDeleting) {
+          setDeleteTarget(null);
+          return;
+        }
+        if (previewModal) {
+          setPreviewModal(null);
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previewModal]);
+  }, [previewModal, deleteTarget, isDeleting]);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/audit/${encodeURIComponent(deleteTarget.id)}`,
+        { method: "DELETE" }
+      );
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+      };
+      if (!res.ok) {
+        toast.error(
+          typeof payload.error === "string" && payload.error
+            ? payload.error
+            : "Could not delete audit. Please try again."
+        );
+        return;
+      }
+
+      const deletedId = deleteTarget.id;
+      setLiveDocs((prev) => prev.filter((item) => item.id !== deletedId));
+      if (previewModal?.auditId === deletedId) {
+        setPreviewModal(null);
+      }
+      setDeleteTarget(null);
+      toast.success("Audit deleted");
+    } catch {
+      toast.error("Could not delete audit. Please check your connection.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -496,17 +542,12 @@ export default function DocumentArchivePage() {
                 {/* Row Navigation Link to Audit Studio */}
                 <Link
                   href={`/audits/${doc.id}`}
-                  className="flex-1 min-w-0 flex items-center justify-between gap-3 py-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
+                  className="flex-1 min-w-0 flex items-center justify-between gap-3 sm:gap-4 py-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-4">
-                      <h4 className="font-bold text-sm sm:text-base text-slate-900 truncate group-hover:text-[#2563EB] transition-colors">
-                        {doc.facility}
-                      </h4>
-                      <span className="font-black text-sm sm:text-base text-slate-900 shrink-0 font-mono tabular-nums">
-                        {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
-                      </span>
-                    </div>
+                    <h4 className="font-bold text-sm sm:text-base text-slate-900 truncate group-hover:text-[#2563EB] transition-colors">
+                      {doc.facility}
+                    </h4>
 
                     <p className="text-[11px] sm:text-xs text-slate-500 font-medium font-mono truncate">
                       {doc.fileSize} • {doc.fileType} • {doc.dateText}
@@ -537,10 +578,25 @@ export default function DocumentArchivePage() {
                     </div>
                   </div>
 
-                  <div className="min-w-[28px] sm:min-w-[44px] min-h-[44px] flex items-center justify-end shrink-0 text-slate-400 group-hover:text-[#2563EB] group-hover:translate-x-0.5 transition-all">
-                    <ChevronRight className="w-5 h-5" />
-                  </div>
+                  <span className="font-black text-sm sm:text-base text-slate-900 shrink-0 font-mono tabular-nums text-right">
+                    {doc.total > 0 ? formatPHP(doc.total) : "Pending OCR"}
+                  </span>
                 </Link>
+
+                {/* Right Utility Action (Delete Button) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDeleteTarget(doc);
+                  }}
+                  aria-label={`Delete audit for ${doc.facility}`}
+                  title={`Delete audit for ${doc.facility}`}
+                  className="min-w-[44px] min-h-[44px] shrink-0 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/70 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>
@@ -611,6 +667,72 @@ export default function DocumentArchivePage() {
           </div>
         </div>
       )}
+
+      {/* Two-Step Delete Confirmation Modal (No backdrop-blur) */}
+      {deleteTarget &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-audit-title"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+            onClick={() => {
+              if (!isDeleting) setDeleteTarget(null);
+            }}
+          >
+            <div
+              className="w-full max-w-md bg-white border border-slate-200 shadow-lg rounded-2xl p-5 sm:p-6 space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-1.5">
+                <h2
+                  id="delete-audit-title"
+                  className="text-base sm:text-lg font-bold text-slate-900"
+                >
+                  Delete hospital audit?
+                </h2>
+                <p className="text-xs sm:text-sm font-semibold text-slate-700">
+                  {deleteTarget.facility}{" "}
+                  <span className="font-normal text-slate-500">
+                    • {deleteTarget.dateText}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed pt-1">
+                  This will permanently delete the audit record and all uploaded
+                  bill files. This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteTarget(null)}
+                  className="min-h-[44px] px-4 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleConfirmDelete}
+                  className="min-h-[44px] px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <span>Delete Audit</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

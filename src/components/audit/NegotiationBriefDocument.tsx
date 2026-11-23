@@ -26,12 +26,22 @@ interface NegotiationBriefDocumentProps {
   meta: NegotiationBriefMeta;
 }
 
+function formatCircularLabel(circularNumber?: string): string | null {
+  if (!circularNumber?.trim()) return null;
+  const trimmed = circularNumber.trim();
+  if (/^PhilHealth Circular/i.test(trimmed)) return trimmed;
+  const cleaned = trimmed.replace(/^PC-/i, "");
+  return `PhilHealth Circular No. ${cleaned}`;
+}
+
 export function buildPlainTextNegotiationBrief(
   audit: AuditEngineResult,
   meta: NegotiationBriefMeta
 ): string {
   const reviewItems = audit.line_items.filter(
-    (item) => item.status === "review_worthy"
+    (item) =>
+      item.status === "review_worthy" ||
+      item.status === "itemized_verification"
   );
   const arithmeticAdjustment = Math.max(0, audit.arithmetic_discrepancy ?? 0);
   const potentialSavings =
@@ -50,24 +60,44 @@ export function buildPlainTextNegotiationBrief(
     discountType !== "regular" ||
     meta.isSeniorOrPwd ||
     audit.senior_pwd_savings > 0;
+  const facilityOwnership =
+    audit.facility_ownership ??
+    audit.eligibility_snapshot?.facility_ownership ??
+    "private";
+  const isGovernmentFacility = facilityOwnership === "government";
   const hasNbbEntitlement =
+    audit.is_nbb_eligible === true ||
     (audit.nbb_savings ?? 0) > 0 ||
-    ((audit.eligibility_snapshot?.contributor_type === "indirect_nbb" ||
-      audit.eligibility_snapshot?.contributor_type === "lifetime" ||
-      hasStatutoryPrivilege) &&
+    (isGovernmentFacility &&
+      (audit.eligibility_snapshot?.contributor_type === "indirect_nbb" ||
+        audit.eligibility_snapshot?.contributor_type === "lifetime" ||
+        hasStatutoryPrivilege) &&
       audit.eligibility_snapshot?.accommodation_type === "basic_ward");
+
+  const primaryCircularLabel = formatCircularLabel(
+    audit.circular_number ??
+      audit.detected_case_packages[0]?.circular_number ??
+      audit.detected_case_packages[0]?.circular_id
+  );
+  const reconciledBalanceLabel =
+    audit.reconciled_balance_label ||
+    ((audit.statutory_reconciliation?.philhealth_deducted ?? 0) > 0
+      ? "Reconciled Balance Due (After PhilHealth Case Rate)"
+      : "Reconciled Balance Due (Before PhilHealth Case Rate)");
 
   const pkgLines =
     audit.detected_case_packages.length > 0
       ? audit.detected_case_packages
-          .map(
-            (pkg) =>
-              `  • ${pkg.keyword} (RVS/ICD Code: ${pkg.code}) — Total Case Rate: ${formatPHP(
-                pkg.total_rate
-              )} (HCI Fee: ${formatPHP(pkg.hci_fee)} | PF Share: ${formatPHP(
-                pkg.prof_fee
-              )}${pkg.is_estimated_split ? " — est. 70/30 split" : ""})`
-          )
+          .map((pkg) => {
+            const circ = formatCircularLabel(
+              pkg.circular_number ?? pkg.circular_id
+            );
+            return `  • ${pkg.keyword} (RVS/ICD Code: ${pkg.code}${circ ? ` · ${circ}` : ""}) — Total Case Rate: ${formatPHP(
+              pkg.total_rate
+            )} (HCI Fee: ${formatPHP(pkg.hci_fee)} | PF Share: ${formatPHP(
+              pkg.prof_fee
+            )}${pkg.is_estimated_split ? " — est. 70/30 split" : ""})`;
+          })
           .join("\n")
       : "  • Standard PhilHealth / Statutory Review (No specific RVS/ICD package matched)";
 
@@ -97,7 +127,7 @@ export function buildPlainTextNegotiationBrief(
     "FORMAL REQUEST FOR ITEMIZED BILLING RECONCILIATION & BENEFIT REVIEW",
     "======================================================================",
     `Date Prepared: ${meta.preparedDate}`,
-    `To: Head of Billing & PhilHealth Claims Section / Medical Social Service`,
+    `To: Head of Billing & PhilHealth Claims Section${isGovernmentFacility ? " / Medical Social Service (Malasakit Center Desk)" : ""}`,
     `Institution: ${audit.hospital_name}`,
     `Patient Name: ${audit.patient_name || "Patient on Record"}`,
     `Statement / SOA No.: ${audit.statement_number || "Per Attached Statement"}`,
@@ -136,7 +166,7 @@ export function buildPlainTextNegotiationBrief(
         ]
       : []),
     `   • Total Identified Adjustments:       ${formatPHP(potentialSavings)}`,
-    `   • Estimated Fair Balance Due:         ${formatPHP(audit.fair_out_of_pocket)}`,
+    `   • ${reconciledBalanceLabel}: ${formatPHP(audit.fair_out_of_pocket)}`,
     "",
     "2. MATCHED PHILHEALTH CASE RATE PACKAGE(S)",
     pkgLines,
@@ -145,7 +175,7 @@ export function buildPlainTextNegotiationBrief(
     itemLines,
     "",
     "4. STATUTORY & REGULATORY BASIS",
-    "   • PhilHealth All Case Rates (ACR) Policy: Mandatory operating room, delivery room, and ward supplies, diagnostic tests, and bundled drugs included in the Health Care Institution (HCI) fee should not be billed separately as out-of-pocket charges.",
+    `   • PhilHealth All Case Rates (ACR) Policy${primaryCircularLabel ? ` (${primaryCircularLabel})` : ""}: Mandatory operating room, delivery room, and ward supplies, diagnostic tests, and bundled drugs included in the Health Care Institution (HCI) fee should not be billed separately as out-of-pocket charges.`,
     ...(hasStatutoryPrivilege
       ? [
           isPwd
@@ -155,10 +185,12 @@ export function buildPlainTextNegotiationBrief(
       : []),
     ...(hasNbbEntitlement
       ? [
-          "   • PhilHealth Circular 2016-0020 & Republic Act No. 11223 (Universal Health Care Act — No Balance Billing / Zero Co-Payment Policy): Qualified Indirect Contributors (Indigent, Sponsored, Kasambahay, Senior Citizen under RA 10645, Solo Parent under PC 2026-0015, PWD under PC 2026-0017) and Lifetime Members admitted in basic/ward accommodation are entitled to Zero Co-Payment (₱0.00 out-of-pocket) for covered confinement services.",
+          "   • PhilHealth Circular 2016-0020, PhilHealth Circular 2017-0017 & Republic Act No. 11223 (Universal Health Care Act — No Balance Billing / Zero Co-Payment Policy): Qualified Indirect Contributors (Indigent, Sponsored, Kasambahay, Senior Citizen under RA 10645, Solo Parent under PC 2026-0015, PWD under PC 2026-0017) and Lifetime Members admitted at a government facility in basic/ward accommodation (or private room when no ward bed was available at admission) are entitled to Zero Co-Payment (₱0.00 out-of-pocket) for covered confinement services.",
         ]
       : []),
-    "   • RA 11463 (Malasakit Centers Act): Please issue an updated, certified Statement of Account reflecting reconciled PhilHealth and statutory deductions to support our Medical Social Service / Malasakit / DSWD / PCSO guarantee letter endorsement.",
+    isGovernmentFacility
+      ? "   • Republic Act No. 11463 (Malasakit Centers Act): Please issue an updated, certified Statement of Account reflecting reconciled PhilHealth and statutory deductions to support our Medical Social Service / Malasakit Center Desk endorsement for unified DOH, DSWD, PCSO, and PhilHealth assistance."
+      : "   • Financial Assistance Routing (Private Hospital): Please issue an updated, certified Final Statement of Account and Clinical Abstract to support our application for DSWD Assistance to Individuals in Crisis Situation (AICS), PCSO Medical Access Program (MAP), and DOH Medical Assistance to Indigent and Financially Incapacitated Patients (MAIP, for DOH-accredited private hospitals).",
     "",
     "Respectfully submitted by:",
     `${meta.representativeName || audit.patient_name || "Authorized Patient Representative"}`,
@@ -177,7 +209,9 @@ export function NegotiationBriefDocument({
   meta,
 }: NegotiationBriefDocumentProps) {
   const reviewItems = audit.line_items.filter(
-    (item) => item.status === "review_worthy"
+    (item) =>
+      item.status === "review_worthy" ||
+      item.status === "itemized_verification"
   );
   const coveredItems = audit.line_items.filter(
     (item) => item.status === "covered"
@@ -218,12 +252,32 @@ export function NegotiationBriefDocument({
     discountType !== "regular" ||
     meta.isSeniorOrPwd ||
     audit.senior_pwd_savings > 0;
+  const facilityOwnership =
+    audit.facility_ownership ??
+    audit.eligibility_snapshot?.facility_ownership ??
+    "private";
+  const isGovernmentFacility = facilityOwnership === "government";
   const hasNbbEntitlement =
+    audit.is_nbb_eligible === true ||
     (audit.nbb_savings ?? 0) > 0 ||
-    ((audit.eligibility_snapshot?.contributor_type === "indirect_nbb" ||
-      audit.eligibility_snapshot?.contributor_type === "lifetime" ||
-      hasStatutoryPrivilege) &&
+    (isGovernmentFacility &&
+      (audit.eligibility_snapshot?.contributor_type === "indirect_nbb" ||
+        audit.eligibility_snapshot?.contributor_type === "lifetime" ||
+        hasStatutoryPrivilege) &&
       audit.eligibility_snapshot?.accommodation_type === "basic_ward");
+
+  const primaryCircularLabel = formatCircularLabel(
+    audit.circular_number ??
+      audit.detected_case_packages[0]?.circular_number ??
+      audit.detected_case_packages[0]?.circular_id
+  );
+  const reconciledBalanceLabel =
+    audit.reconciled_balance_label ||
+    ((ocr?.philhealth_total ??
+      audit.statutory_reconciliation?.philhealth_deducted ??
+      0) > 0
+      ? "Reconciled Balance Due (After PhilHealth Case Rate)"
+      : "Reconciled Balance Due (Before PhilHealth Case Rate)");
 
   const admissionDate = meta.admissionDate || ocr?.admission_date;
   const dischargeDate = meta.dischargeDate || ocr?.discharge_date;
@@ -270,9 +324,11 @@ export function NegotiationBriefDocument({
             Head of Billing &amp; PhilHealth Claims Section
           </p>
           <p className="font-semibold text-slate-800">{audit.hospital_name}</p>
-          <p className="text-[11px] text-slate-500">
-            Copy Furnished: Medical Social Service / Malasakit Center Desk
-          </p>
+          {isGovernmentFacility && (
+            <p className="text-[11px] text-slate-500">
+              Copy Furnished: Medical Social Service / Malasakit Center Desk
+            </p>
+          )}
         </div>
 
         <div className="space-y-1 border-t border-slate-200/80 pt-3 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 print:border-l print:border-t-0 print:pl-6 print:pt-0">
@@ -404,7 +460,11 @@ export function NegotiationBriefDocument({
                 >
                   <span className="font-semibold text-slate-900">
                     {pkg.keyword} (Code:{" "}
-                    <span className="font-mono font-bold">{pkg.code}</span>)
+                    <span className="font-mono font-bold">{pkg.code}</span>
+                    {formatCircularLabel(pkg.circular_number ?? pkg.circular_id)
+                      ? ` · ${formatCircularLabel(pkg.circular_number ?? pkg.circular_id)}`
+                      : ""}
+                    )
                   </span>
                   <span className="text-slate-500">
                     HCI Fee:{" "}
@@ -610,9 +670,7 @@ export function NegotiationBriefDocument({
                 </div>
 
                 <div className="flex items-center justify-between gap-4 border-t border-[#CBD5E1] pt-1.5 font-black text-emerald-900">
-                  <span>
-                    Reconciled Balance Due (Before PhilHealth Case Rate):
-                  </span>
+                  <span>{reconciledBalanceLabel}:</span>
                   <span className="font-mono tabular-nums text-sm whitespace-nowrap">
                     {formatPHP(audit.fair_out_of_pocket)}
                   </span>
@@ -632,9 +690,10 @@ export function NegotiationBriefDocument({
         <ul className="list-disc space-y-1.5 pl-4 text-[11px] leading-relaxed text-[#1E293B]">
           <li>
             <strong>
-              PhilHealth All Case Rates (ACR) Policy &amp; Anti-Unbundling Rule:
+              PhilHealth All Case Rates (ACR) Policy &amp; Anti-Unbundling Rule
+              {primaryCircularLabel ? ` (${primaryCircularLabel})` : ""}:
             </strong>{" "}
-            Under PhilHealth Circulars governing All Case Rates, mandatory
+            Under {primaryCircularLabel || "PhilHealth Circulars governing All Case Rates"}, mandatory
             supplies, routine diagnostics, operating/delivery room fees, and
             medicines necessary for the procedure are bundled inside the{" "}
             <strong>Health Care Institution (HCI) Fee</strong> and{" "}
@@ -707,20 +766,38 @@ export function NegotiationBriefDocument({
               hospital confinement services.
             </li>
           )}
-          <li>
-            <strong>
-              Republic Act No. 11463 (Malasakit Centers Act) &amp; Medical
-              Social Service Endorsement:
-            </strong>{" "}
-            For any remaining legitimate out-of-pocket balance after PhilHealth
-            and statutory deductions, we respectfully request an updated,
-            certified Final Statement of Account and Clinical Abstract so our
-            family may submit them for{" "}
-            <strong>
-              Malasakit Center / DOH MAIP / DSWD AICS / PCSO MAP
-            </strong>{" "}
-            Guarantee Letter assistance.
-          </li>
+          {isGovernmentFacility ? (
+            <li>
+              <strong>
+                Republic Act No. 11463 (Malasakit Centers Act) &amp; Medical
+                Social Service Endorsement:
+              </strong>{" "}
+              For any remaining legitimate out-of-pocket balance after PhilHealth
+              and statutory deductions, we respectfully request an updated,
+              certified Final Statement of Account and Clinical Abstract for{" "}
+              <strong>Medical Social Service / Malasakit Center Desk</strong>{" "}
+              processing of unified DOH, DSWD, PCSO, and PhilHealth assistance.
+            </li>
+          ) : (
+            <li>
+              <strong>
+                Medical Financial Assistance Routing (Private Hospital):
+              </strong>{" "}
+              For any remaining legitimate out-of-pocket balance after PhilHealth
+              and statutory deductions, we respectfully request an updated,
+              certified Final Statement of Account and Clinical Abstract to
+              support our application for{" "}
+              <strong>
+                DSWD Assistance to Individuals in Crisis Situation (AICS)
+              </strong>
+              , <strong>PCSO Medical Access Program (MAP)</strong>, and{" "}
+              <strong>
+                DOH Medical Assistance to Indigent and Financially Incapacitated
+                Patients (MAIP)
+              </strong>{" "}
+              <em>(for DOH-accredited private hospitals)</em>.
+            </li>
+          )}
         </ul>
       </section>
 

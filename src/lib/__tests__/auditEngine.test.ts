@@ -471,6 +471,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
       case_code: "66984",
       procedure_keyword: "Cataract Extraction with IOL",
       circular_id: "2024-0037",
+      circular_number: "PC-2024-0037",
       effective_from: "2024-10-01",
       effective_to: null,
       source_url: null,
@@ -887,6 +888,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
         accommodation_type: "basic_ward",
         has_mdr_or_pin: false,
         facility_level: "level_3",
+        facility_ownership: "government",
       },
     });
 
@@ -1152,6 +1154,7 @@ describe("Versioned packages & Multi-page OCR merge", () => {
         accommodation_type: "basic_ward",
         has_mdr_or_pin: true,
         facility_level: "level_2",
+        facility_ownership: "government",
       },
     });
 
@@ -1487,5 +1490,230 @@ describe("Versioned packages & Multi-page OCR merge", () => {
     expect(
       audit.flags.some((f) => f.title === "Estimated 70/30 HCI/PF Split Used")
     ).toBe(true);
+  });
+
+  it("applies PC 2024-0037 RVS 60/40 vs ICD-10 70/30 splits and admission-date time travel", () => {
+    const rvsVerified = normalizeSeedPackage({
+      case_code: "44950",
+      procedure_keyword: "Open Appendectomy",
+      circular_id: "2024-0037",
+      circular_number: "PC-2024-0037",
+      effective_from: "2025-01-01",
+      total_case_rate: 46800,
+      is_verified: true,
+    });
+    expect(rvsVerified.hci_fee).toBe(28080);
+    expect(rvsVerified.prof_fee).toBe(18720);
+    expect(rvsVerified.is_estimated_split).toBeUndefined();
+    expect(rvsVerified.circular_number).toBe("PC-2024-0037");
+
+    const icdVerified = normalizeSeedPackage({
+      case_code: "J18.9",
+      procedure_keyword: "Pneumonia Moderate Risk",
+      circular_id: "2024-0037",
+      effective_from: "2025-01-01",
+      total_case_rate: 22500,
+      is_verified: true,
+    });
+    expect(icdVerified.hci_fee).toBe(15750);
+    expect(icdVerified.prof_fee).toBe(6750);
+    expect(icdVerified.is_estimated_split).toBeUndefined();
+
+    const versionedCatalog: CatalogPackage[] = [
+      toCatalogPackage({
+        case_code: "44950",
+        procedure_keyword: "Open Appendectomy",
+        circular_id: "2013-0035",
+        circular_number: "PC-2013-0035",
+        effective_from: "2014-01-01",
+        effective_to: "2024-12-31",
+        superseded_by: "PC-2024-0037",
+        is_verified: true,
+        hci_fee: 18720,
+        prof_fee: 12480,
+        total_case_rate: 31200,
+        inclusive_items: [],
+      }),
+      toCatalogPackage({
+        case_code: "44950",
+        procedure_keyword: "Open Appendectomy",
+        circular_id: "2024-0037",
+        circular_number: "PC-2024-0037",
+        effective_from: "2025-01-01",
+        effective_to: null,
+        is_verified: true,
+        hci_fee: 0,
+        prof_fee: 0,
+        total_case_rate: 46800,
+        inclusive_items: [],
+      }),
+    ];
+
+    const pre2025 = runAuditEngine(
+      {
+        hospital_name: "Ormoc Doctors Hospital, Inc.",
+        admission_date: "2024-11-10",
+        discharge_date: "2025-01-05",
+        case_rate_codes_detected: ["44950"],
+        line_items: [
+          {
+            id: "item-1",
+            description: "Operating Room",
+            category: "Operating Room",
+            quantity: 1,
+            unit_price: 50000,
+            total_amount: 50000,
+          },
+        ],
+        gross_total: 50000,
+        philhealth_total: 31200,
+        senior_pwd_discount_total: 0,
+        net_balance_due: 18800,
+      },
+      { auditId: "time-travel-2024", referencePackages: versionedCatalog }
+    );
+    expect(pre2025.detected_case_packages[0].total_rate).toBe(31200);
+    expect(pre2025.circular_number).toBe("PC-2013-0035");
+
+    const post2025 = runAuditEngine(
+      {
+        hospital_name: "Ormoc Doctors Hospital, Inc.",
+        admission_date: "2025-01-02",
+        case_rate_codes_detected: ["44950"],
+        line_items: [
+          {
+            id: "item-1",
+            description: "Operating Room",
+            category: "Operating Room",
+            quantity: 1,
+            unit_price: 50000,
+            total_amount: 50000,
+          },
+        ],
+        gross_total: 50000,
+        philhealth_total: 46800,
+        senior_pwd_discount_total: 0,
+        net_balance_due: 3200,
+      },
+      { auditId: "time-travel-2025", referencePackages: versionedCatalog }
+    );
+    expect(post2025.detected_case_packages[0].total_rate).toBe(46800);
+    expect(post2025.detected_case_packages[0].hci_fee).toBe(28080);
+    expect(post2025.detected_case_packages[0].prof_fee).toBe(18720);
+    expect(post2025.circular_number).toBe("PC-2024-0037");
+    expect(post2025.reconciled_balance_label).toBe(
+      "Reconciled Balance Due (After PhilHealth Case Rate)"
+    );
+  });
+
+  it("branches government NBB anti-unbundling (including no-ward-bed exception) vs private itemized_verification and routes briefs", () => {
+    const lumpSumBill: ExtractedBillData = {
+      hospital_name: "Ormoc Doctors Hospital, Inc.",
+      admission_date: "2025-02-10",
+      case_rate_codes_detected: ["44950"],
+      is_senior_or_pwd: true,
+      statutory_discount_type: "senior",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Central Supply",
+          category: "Medical Supplies",
+          quantity: 1,
+          unit_price: 11280,
+          total_amount: 11280,
+        },
+        {
+          id: "item-2",
+          description: "Laboratory",
+          category: "Laboratory/Diagnostics",
+          quantity: 1,
+          unit_price: 4850,
+          total_amount: 4850,
+        },
+      ],
+      gross_total: 16130,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 16130,
+    };
+
+    const pkg44950 = toCatalogPackage({
+      case_code: "44950",
+      procedure_keyword: "Open Appendectomy",
+      circular_id: "2024-0037",
+      circular_number: "PC-2024-0037",
+      effective_from: "2025-01-01",
+      is_verified: true,
+      hci_fee: 28080,
+      prof_fee: 18720,
+      total_case_rate: 46800,
+      inclusive_items: [],
+    });
+
+    // Private hospital -> is_nbb_eligible: false, lump-sum items -> itemized_verification with requested_adjustment: 0
+    const privateAudit = runAuditEngine(lumpSumBill, {
+      auditId: "private-lump-sum",
+      referencePackages: [pkg44950],
+      statutoryDiscountType: "senior",
+      eligibilitySnapshot: {
+        facility_ownership: "private",
+        accommodation_type: "basic_ward",
+        contributor_type: "indirect_nbb",
+        has_mdr_or_pin: true,
+        facility_level: "level_2",
+      },
+    });
+    expect(privateAudit.is_nbb_eligible).toBe(false);
+    expect(privateAudit.line_items[0].status).toBe("itemized_verification");
+    expect(privateAudit.line_items[0].requested_adjustment).toBe(0);
+    expect(privateAudit.line_items[1].status).toBe("itemized_verification");
+    expect(privateAudit.line_items[1].requested_adjustment).toBe(0);
+    expect(privateAudit.disputed_overcharge_total).toBe(0);
+    expect(privateAudit.reconciled_balance_label).toBe(
+      "Reconciled Balance Due (Before PhilHealth Case Rate)"
+    );
+
+    const privateBrief = buildPlainTextNegotiationBrief(privateAudit, {
+      representativeName: "Maria Santos",
+      relationship: "Daughter",
+      contactInfo: "0917-000-0000",
+      preparedDate: "Feb 12, 2025",
+      isSeniorOrPwd: true,
+      statutoryDiscountType: "senior",
+    });
+    expect(privateBrief).not.toContain("Malasakit Center");
+    expect(privateBrief).toContain("DSWD");
+    expect(privateBrief).toContain("PCSO");
+    expect(privateBrief).toContain("MAIP");
+
+    // Government hospital + private room + no_ward_bed_available: true -> is_nbb_eligible: true, -billed_amount write-off & ₱0 OOP
+    const govNoWardBedAudit = runAuditEngine(lumpSumBill, {
+      auditId: "gov-no-ward-bed",
+      referencePackages: [pkg44950],
+      statutoryDiscountType: "senior",
+      eligibilitySnapshot: {
+        facility_ownership: "government",
+        accommodation_type: "non_basic_private",
+        no_ward_bed_available: true,
+        contributor_type: "indirect_nbb",
+        has_mdr_or_pin: true,
+        facility_level: "level_3",
+      },
+    });
+    expect(govNoWardBedAudit.is_nbb_eligible).toBe(true);
+    expect(govNoWardBedAudit.line_items[0].requested_adjustment).toBe(-11280);
+    expect(govNoWardBedAudit.fair_out_of_pocket).toBe(0);
+
+    const govBrief = buildPlainTextNegotiationBrief(govNoWardBedAudit, {
+      representativeName: "Maria Santos",
+      relationship: "Daughter",
+      contactInfo: "0917-000-0000",
+      preparedDate: "Feb 12, 2025",
+      isSeniorOrPwd: true,
+      statutoryDiscountType: "senior",
+    });
+    expect(govBrief).toContain("Malasakit Center");
+    expect(govBrief).toContain("11463");
+    expect(govBrief).toContain("PhilHealth Circular No. 2024-0037");
   });
 });

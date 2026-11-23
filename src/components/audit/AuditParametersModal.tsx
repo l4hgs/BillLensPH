@@ -146,6 +146,62 @@ export function AuditParametersModal({
           </div>
 
           <div className="border-t border-slate-200/80 pt-3 sm:pt-4 space-y-3 sm:space-y-4">
+            {/* Facility Ownership Type */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-slate-800">Facility Type</span>
+                <span className="hidden sm:inline text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap shrink-0">
+                  NBB &amp; Assistance Routing
+                </span>
+              </div>
+              <div
+                role="radiogroup"
+                aria-label="Facility Type"
+                className="grid grid-cols-2 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60 gap-1"
+              >
+                {(
+                  [
+                    { id: "private", label: "Private Hospital" },
+                    { id: "government", label: "Government Hospital" },
+                  ] as const
+                ).map((opt) => {
+                  const isSelected =
+                    (draftEligibility.facility_ownership ?? "private") ===
+                    opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      onClick={() =>
+                        setDraftEligibility((prev) => ({
+                          ...prev,
+                          facility_ownership: opt.id,
+                          no_ward_bed_available:
+                            opt.id === "government"
+                              ? Boolean(prev.no_ward_bed_available)
+                              : false,
+                        }))
+                      }
+                      className={cn(
+                        "cursor-pointer min-h-[44px] rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]",
+                        isSelected
+                          ? "bg-white text-slate-900 font-bold shadow-xs border border-slate-200/80"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="hidden sm:block text-[11px] text-slate-500 leading-relaxed">
+                No Balance Billing (₱0.00 co-pay) and Malasakit Center (RA 11463)
+                apply exclusively to Government / DOH / LGU hospitals.
+              </p>
+            </div>
+
             {/* Contributor Type */}
             <div className="space-y-1.5">
               <span className="block text-xs font-bold text-slate-800">
@@ -238,6 +294,34 @@ export function AuditParametersModal({
                   );
                 })}
               </div>
+
+              {(draftEligibility.facility_ownership ?? "private") ===
+                "government" &&
+                draftEligibility.accommodation_type === "non_basic_private" && (
+                  <label className="mt-2 flex items-start gap-3 min-h-[44px] rounded-xl border border-slate-200/90 bg-slate-50/70 px-3 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(draftEligibility.no_ward_bed_available)}
+                      onChange={(e) =>
+                        setDraftEligibility((prev) => ({
+                          ...prev,
+                          no_ward_bed_available: e.target.checked,
+                        }))
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] shrink-0"
+                    />
+                    <span className="text-xs leading-snug text-slate-700">
+                      <strong className="font-bold text-slate-900 block">
+                        No Ward Bed Available at Admission
+                      </strong>
+                      <span className="text-[11px] text-slate-500">
+                        Check if the government hospital placed the patient in a
+                        private room due to full basic/ward capacity (retains NBB
+                        Zero Co-Payment protection).
+                      </span>
+                    </span>
+                  </label>
+                )}
             </div>
 
             {/* MDR & Facility Level */}

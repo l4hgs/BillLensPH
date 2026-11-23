@@ -8,6 +8,7 @@ import type {
   CatalogPackage,
   EligibilitySnapshot,
   FacilityLevel,
+  FacilityOwnership,
   MatchedCasePackage,
   PhilHealthContributorType,
   StatutoryDiscountType,
@@ -60,13 +61,19 @@ export const DEFAULT_ELIGIBILITY_SNAPSHOT: EligibilitySnapshot = {
   accommodation_type: "unknown",
   has_mdr_or_pin: true,
   facility_level: "unknown",
+  facility_ownership: "private",
+  no_ward_bed_available: false,
 };
 
 export function normalizeEligibilitySnapshot(
-  raw?: unknown
+  raw?: unknown,
+  fallbackFacilityOwnership: FacilityOwnership = "private"
 ): EligibilitySnapshot {
   if (!raw || typeof raw !== "object") {
-    return { ...DEFAULT_ELIGIBILITY_SNAPSHOT };
+    return {
+      ...DEFAULT_ELIGIBILITY_SNAPSHOT,
+      facility_ownership: fallbackFacilityOwnership,
+    };
   }
   const rec = raw as Record<string, unknown>;
 
@@ -109,12 +116,32 @@ export function normalizeEligibilitySnapshot(
       ? (rec.facility_level as FacilityLevel)
       : "unknown";
 
+  const facility_ownership: FacilityOwnership =
+    rec.facility_ownership === "government" ||
+    rec.facility_ownership === "private"
+      ? rec.facility_ownership
+      : fallbackFacilityOwnership;
+
+  const no_ward_bed_available =
+    typeof rec.no_ward_bed_available === "boolean"
+      ? rec.no_ward_bed_available
+      : false;
+
   return {
     contributor_type,
     accommodation_type,
     has_mdr_or_pin,
     facility_level,
+    facility_ownership,
+    no_ward_bed_available,
   };
+}
+
+const LUMP_SUM_DEPARTMENT_PATTERN =
+  /^\s*(central\s+suppl(?:y|ies)(\s+room)?|csr|medical\s+suppl(?:y|ies)|suppl(?:y|ies)|laborator(?:y|ies)|lab(\s+charges?|\s+fees?)?|dept\.?\s+of\s+clinical\s+laborator(?:y|ies)|clinical\s+laborator(?:y|ies)|pharmacy(\s*[-–—]\s*main|\s+charges?|\s+fees?)?|drugs?\s*(?:&|and)\s*medicines?)\s*$/i;
+
+function isLumpSumDepartmentCharge(description: string): boolean {
+  return LUMP_SUM_DEPARTMENT_PATTERN.test((description || "").trim());
 }
 
 /**
@@ -187,9 +214,13 @@ function toPublicPackage(pkg: CatalogPackage): MatchedCasePackage {
     inclusive_items: pkg.inclusive_items,
     is_verified: isVerified,
     ...(pkg.circular_id ? { circular_id: pkg.circular_id } : {}),
+    ...(pkg.circular_number ? { circular_number: pkg.circular_number } : {}),
     ...(pkg.effective_from ? { effective_from: pkg.effective_from } : {}),
     ...(pkg.effective_to !== undefined
       ? { effective_to: pkg.effective_to }
+      : {}),
+    ...(pkg.superseded_by !== undefined
+      ? { superseded_by: pkg.superseded_by }
       : {}),
     ...(pkg.source_url !== undefined ? { source_url: pkg.source_url } : {}),
     ...(pkg.is_estimated_split ? { is_estimated_split: true } : {}),
@@ -271,10 +302,32 @@ export function runAuditEngine(
       ? "Persons with Disability Affairs Office (PDAO)"
       : "Office for Senior Citizens Affairs (OSCA)";
 
+  // Admission-date time travel: resolve active circulars by admission_date first
   const serviceDate =
+    extracted.admission_date ||
     extracted.discharge_date ||
     extracted.statement_date ||
-    extracted.admission_date;
+    new Date().toISOString().slice(0, 10);
+
+  const fallbackFacilityOwnership: FacilityOwnership =
+    extracted.facility_ownership ?? "private";
+  const eligibilitySnapshot = normalizeEligibilitySnapshot(
+    options.eligibilitySnapshot ?? extracted.eligibility_snapshot,
+    fallbackFacilityOwnership
+  );
+  const facilityOwnership: FacilityOwnership =
+    eligibilitySnapshot.facility_ownership ?? fallbackFacilityOwnership;
+  const noWardBedAvailable = Boolean(eligibilitySnapshot.no_ward_bed_available);
+  const isNbbQualifiedMember =
+    eligibilitySnapshot.contributor_type === "indirect_nbb" ||
+    eligibilitySnapshot.contributor_type === "lifetime" ||
+    isSeniorOrPwd;
+  const isNbbEligible =
+    facilityOwnership === "government" &&
+    isNbbQualifiedMember &&
+    (eligibilitySnapshot.accommodation_type === "basic_ward" ||
+      (eligibilitySnapshot.accommodation_type === "non_basic_private" &&
+        noWardBedAvailable));
 
   const statutoryRule =
     (options.statutoryRules && options.statutoryRules.length > 0
@@ -357,8 +410,10 @@ export function runAuditEngine(
     let matchedPkgCode: string | undefined;
     let matchedPkgName: string | undefined;
     let isUnbundled = false;
+    let isItemizedVerification = false;
     let statutoryEligible = false;
     let suggestedDeduction: number | undefined;
+    let requestedAdjustment: number | undefined;
     let vatTreatment: AuditedLineItem["vat_treatment"];
     let expectedStatutoryRelief: number | undefined;
 
@@ -379,29 +434,64 @@ export function runAuditEngine(
       return { ...item, status: "covered" };
     }
 
-    // Check B: Anti-Unbundling against matched PhilHealth packages
+    // Check B: Facility- & Room-Aware Anti-Unbundling (PhilHealth Circular No. 2017-0017 / NBB)
+    const isLumpSumDept = isLumpSumDepartmentCharge(item.description);
     if (!NEVER_UNBUNDLED.has(item.category) && itemBalance > 0) {
-      for (const pkg of matchedPackages) {
-        const alias = findMatchingAlias(item.description, pkg.aliases);
-        if (!alias) continue;
-
+      if (isNbbEligible && isLumpSumDept) {
+        // Path A (Government NBB): Full anti-unbundling write-off for covered package departments
         status = "review_worthy";
         isUnbundled = true;
-        matchedPkgCode = pkg.code;
-        matchedPkgName = pkg.keyword;
-        flagReason = `Hospital charged ${formatPHP(itemBalance)} out-of-pocket for "${item.description}", which is a mandatory inclusive item under PhilHealth Case Rate ${pkg.code} (${pkg.keyword}).`;
+        matchedPkgCode = matchedPackages[0]?.code;
+        matchedPkgName = matchedPackages[0]?.keyword;
+        flagReason = `Government NBB Zero Co-Payment write-off: "${item.description}" (${formatPHP(itemBalance)}) is covered under PhilHealth No Balance Billing (PC 2017-0017 / PC 2016-0020) and must not be billed out-of-pocket.`;
         suggestedDeduction = itemBalance;
+        requestedAdjustment = -itemBalance;
         disputedOverchargeTotal = round2(disputedOverchargeTotal + itemBalance);
 
         flags.push({
           type: "unbundled_charge",
           severity: "high",
-          title: `Potential Unbundled Charge: ${item.description}`,
+          title: `NBB Covered Charge Write-Off: ${item.description}`,
           description: flagReason,
           potential_savings: itemBalance,
           item_id: item.id,
         });
-        break;
+      } else if (!isNbbEligible && matchedPackages.length > 0 && isLumpSumDept) {
+        // Path B (Private Hospital / Non-NBB): Do NOT zero out lump-sum supplies/labs/pharmacy.
+        // Classify as "itemized_verification" with ₱0.00 automatic adjustment.
+        status = "itemized_verification";
+        isItemizedVerification = true;
+        matchedPkgCode = matchedPackages[0]?.code;
+        matchedPkgName = matchedPackages[0]?.keyword;
+        flagReason = `Itemized Verification Requested: Lump-sum "${item.description}" (${formatPHP(itemBalance)}) at a private/non-NBB facility cannot be automatically written off. Request itemized charge slips from billing to verify no duplicate or unadministered items.`;
+        suggestedDeduction = 0;
+        requestedAdjustment = 0;
+      } else {
+        for (const pkg of matchedPackages) {
+          const alias = findMatchingAlias(item.description, pkg.aliases);
+          if (!alias) continue;
+
+          status = "review_worthy";
+          isUnbundled = true;
+          matchedPkgCode = pkg.code;
+          matchedPkgName = pkg.keyword;
+          flagReason = `Hospital charged ${formatPHP(itemBalance)} out-of-pocket for "${item.description}", which is a mandatory inclusive item under PhilHealth Case Rate ${pkg.code} (${pkg.keyword}).`;
+          suggestedDeduction = itemBalance;
+          requestedAdjustment = -itemBalance;
+          disputedOverchargeTotal = round2(
+            disputedOverchargeTotal + itemBalance
+          );
+
+          flags.push({
+            type: "unbundled_charge",
+            severity: "high",
+            title: `Potential Unbundled Charge: ${item.description}`,
+            description: flagReason,
+            potential_savings: itemBalance,
+            item_id: item.id,
+          });
+          break;
+        }
       }
     }
 
@@ -419,7 +509,12 @@ export function runAuditEngine(
       (statutoryRule.eligible_categories.includes("Room & Board") &&
         FACILITY_SERVICE_CATEGORIES.has(item.category));
 
-    if (!isUnbundled && isSeniorOrPwd && isCategoryEligible) {
+    if (
+      !isUnbundled &&
+      !isItemizedVerification &&
+      isSeniorOrPwd &&
+      isCategoryEligible
+    ) {
       statutoryEligible = true;
       const currentDiscount = item.discount_applied || 0;
       const philhealthOnItem = item.philhealth_deducted || 0;
@@ -545,6 +640,9 @@ export function runAuditEngine(
       is_unbundled_overcharge: isUnbundled,
       statutory_discount_eligible: statutoryEligible,
       suggested_deduction: suggestedDeduction,
+      ...(requestedAdjustment !== undefined
+        ? { requested_adjustment: requestedAdjustment }
+        : {}),
       ...(vatTreatment ? { vat_treatment: vatTreatment } : {}),
       ...(expectedStatutoryRelief !== undefined
         ? { expected_statutory_relief: expectedStatutoryRelief }
@@ -858,10 +956,6 @@ export function runAuditEngine(
         )
       : actualOutOfPocket;
 
-  const eligibilitySnapshot = normalizeEligibilitySnapshot(
-    options.eligibilitySnapshot ?? extracted.eligibility_snapshot
-  );
-
   const positiveArithmeticDiscrepancy = Math.max(0, arithmeticDiscrepancy);
   const preNbbDisputable = round2(
     disputedOverchargeTotal +
@@ -875,22 +969,12 @@ export function runAuditEngine(
   );
 
   // 4. No Balance Billing (NBB) / Zero Co-Payment & MDR Readiness Check
-  //    Under PhilHealth Circular 2016-0020 & RA 11223 (UHC Act), Indirect Contributors
-  //    (Indigent, Sponsored, Kasambahay, Senior Citizens under RA 10645, Solo Parents
-  //    under PC 2026-0015, PWDs under PC 2026-0017), Lifetime Members, and Senior/PWD
-  //    patients admitted in Basic / Ward accommodation are entitled to Zero Co-Payment.
-  const isNbbQualifiedMember =
-    eligibilitySnapshot.contributor_type === "indirect_nbb" ||
-    eligibilitySnapshot.contributor_type === "lifetime" ||
-    isSeniorOrPwd;
-
+  //    Under PhilHealth Circular 2017-0017, Circular 2016-0020 & RA 11223 (UHC Act),
+  //    NBB applies ONLY at government facilities for qualified members in Basic / Ward
+  //    accommodation (or in a private room when no basic/ward bed was available at admission).
   let nbbSavings = 0;
 
-  if (
-    isNbbQualifiedMember &&
-    eligibilitySnapshot.accommodation_type === "basic_ward" &&
-    balanceBeforeNbb > 0
-  ) {
+  if (isNbbEligible && balanceBeforeNbb > 0) {
     nbbSavings = balanceBeforeNbb;
     const memberCategoryText =
       eligibilitySnapshot.contributor_type === "indirect_nbb"
@@ -899,14 +983,21 @@ export function runAuditEngine(
           ? "PhilHealth Lifetime Member"
           : privilegeLabel;
 
+    const accommodationNote =
+      eligibilitySnapshot.accommodation_type === "non_basic_private" &&
+      noWardBedAvailable
+        ? "a private room due to no basic/ward bed availability at admission"
+        : "Basic / Ward accommodation";
+
     flags.unshift({
       type: "nbb_violation",
       severity: "high",
       title: "Potential No Balance Billing (NBB) / Zero Co-Payment Violation",
-      description: `Patient qualifies as ${memberCategoryText} admitted in Basic / Ward accommodation, where remaining covered charges (${formatPHP(nbbSavings)}) should carry Zero Co-Payment (₱0.00 out-of-pocket) under PhilHealth Circular 2016-0020 and Republic Act No. 11223 (Universal Health Care Act). Request NBB zero-balance billing compliance or Medical Social Service / Malasakit Center endorsement prior to discharge.`,
+      description: `Patient qualifies as ${memberCategoryText} admitted in ${accommodationNote} at a government facility, where remaining covered charges (${formatPHP(nbbSavings)}) should carry Zero Co-Payment (₱0.00 out-of-pocket) under PhilHealth Circular 2017-0017, Circular 2016-0020, and Republic Act No. 11223 (Universal Health Care Act). Request NBB zero-balance billing compliance or Medical Social Service / Malasakit Center endorsement prior to discharge.`,
       potential_savings: nbbSavings,
     });
   } else if (
+    !isNbbEligible &&
     (eligibilitySnapshot.contributor_type === "indirect_nbb" ||
       eligibilitySnapshot.contributor_type === "lifetime") &&
     eligibilitySnapshot.accommodation_type === "non_basic_private"
@@ -916,7 +1007,7 @@ export function runAuditEngine(
       severity: "low",
       title: "Private Room Co-Payment Applies (NBB Waived by Upgrade)",
       description:
-        "Under PhilHealth Circular 2016-0020 and RA 11223, admission in a non-basic / private room waives No Balance Billing (Zero Co-Payment). Standard PhilHealth All-Case-Rates (ACR) deductions and mandatory Senior/PWD 20% discount + 12% VAT exemption still apply to your statement.",
+        "Under PhilHealth Circular 2016-0020 and RA 11223, voluntary admission in a non-basic / private room (or admission at a private hospital) waives No Balance Billing (Zero Co-Payment). Standard PhilHealth All-Case-Rates (ACR) deductions and mandatory Senior/PWD 20% discount + 12% VAT exemption still apply to your statement.",
       potential_savings: 0,
     });
   }
@@ -1003,6 +1094,19 @@ export function runAuditEngine(
   negotiationBrief += `ADJUSTED FAIR BALANCE DUE: ${formatPHP(fairOutOfPocket)}\n`;
   negotiationBrief += `Estimated Total Patient Savings: ${formatPHP(totalDisputable)}`;
 
+  const primaryCircularNumber =
+    claimablePackages[0]?.circular_number ??
+    (claimablePackages[0]?.circular_id
+      ? /^PC-/i.test(claimablePackages[0].circular_id)
+        ? claimablePackages[0].circular_id.toUpperCase()
+        : `PC-${claimablePackages[0].circular_id}`
+      : undefined);
+
+  const reconciledBalanceLabel =
+    extracted.philhealth_total > 0
+      ? "Reconciled Balance Due (After PhilHealth Case Rate)"
+      : "Reconciled Balance Due (Before PhilHealth Case Rate)";
+
   return {
     audit_id: options.auditId,
     hospital_name: extracted.hospital_name,
@@ -1024,6 +1128,10 @@ export function runAuditEngine(
     senior_pwd_savings: estimatedSeniorSavings,
     statutory_discount_type: resolvedDiscountType,
     eligibility_snapshot: eligibilitySnapshot,
+    ...(primaryCircularNumber ? { circular_number: primaryCircularNumber } : {}),
+    facility_ownership: facilityOwnership,
+    is_nbb_eligible: isNbbEligible,
+    reconciled_balance_label: reconciledBalanceLabel,
     detected_case_packages: matchedPackages.map(toPublicPackage),
     line_items: auditedItems,
     flags,

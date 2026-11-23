@@ -18,6 +18,8 @@ export type Database = {
           accommodation_type: "basic_ward" | "non_basic_private" | "unknown";
           has_mdr_or_pin: boolean;
           facility_level: "level_1" | "level_2" | "level_3" | "asc" | "unknown";
+          facility_ownership: "government" | "private";
+          no_ward_bed_available: boolean;
           created_at: string;
         };
         Insert: {
@@ -28,6 +30,8 @@ export type Database = {
           accommodation_type?: "basic_ward" | "non_basic_private" | "unknown";
           has_mdr_or_pin?: boolean;
           facility_level?: "level_1" | "level_2" | "level_3" | "asc" | "unknown";
+          facility_ownership?: "government" | "private";
+          no_ward_bed_available?: boolean;
           created_at?: string;
         };
         Update: {
@@ -38,6 +42,8 @@ export type Database = {
           accommodation_type?: "basic_ward" | "non_basic_private" | "unknown";
           has_mdr_or_pin?: boolean;
           facility_level?: "level_1" | "level_2" | "level_3" | "asc" | "unknown";
+          facility_ownership?: "government" | "private";
+          no_ward_bed_available?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -91,8 +97,10 @@ export type Database = {
           total_case_rate: number;
           inclusive_items: string[];
           circular_id: string;
+          circular_number: string | null;
           effective_from: string;
           effective_to: string | null;
+          superseded_by: string | null;
           source_url: string | null;
           is_verified: boolean;
         };
@@ -105,8 +113,10 @@ export type Database = {
           total_case_rate?: number;
           inclusive_items?: string[];
           circular_id?: string;
+          circular_number?: string | null;
           effective_from?: string;
           effective_to?: string | null;
+          superseded_by?: string | null;
           source_url?: string | null;
           is_verified?: boolean;
         };
@@ -119,8 +129,10 @@ export type Database = {
           total_case_rate?: number;
           inclusive_items?: string[];
           circular_id?: string;
+          circular_number?: string | null;
           effective_from?: string;
           effective_to?: string | null;
+          superseded_by?: string | null;
           source_url?: string | null;
           is_verified?: boolean;
         };
@@ -136,8 +148,10 @@ export type Database = {
           incomplete_threshold: number;
           eligible_categories: string[];
           citation: string;
+          circular_number: string | null;
           effective_from: string;
           effective_to: string | null;
+          superseded_by: string | null;
           created_at: string;
         };
         Insert: {
@@ -149,8 +163,10 @@ export type Database = {
           incomplete_threshold?: number;
           eligible_categories?: string[];
           citation?: string;
+          circular_number?: string | null;
           effective_from?: string;
           effective_to?: string | null;
+          superseded_by?: string | null;
           created_at?: string;
         };
         Update: {
@@ -162,8 +178,10 @@ export type Database = {
           incomplete_threshold?: number;
           eligible_categories?: string[];
           citation?: string;
+          circular_number?: string | null;
           effective_from?: string;
           effective_to?: string | null;
+          superseded_by?: string | null;
           created_at?: string;
         };
         Relationships: [];

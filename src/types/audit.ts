@@ -51,7 +51,13 @@ export interface AuditDoc {
 // Week 3 AI Vision OCR & Rule-Based Matching Types
 // ============================================================================
 
-export type AuditTier = "covered" | "review_worthy" | "out_of_pocket";
+export type AuditTier =
+  | "covered"
+  | "review_worthy"
+  | "itemized_verification"
+  | "out_of_pocket";
+
+export type FacilityOwnership = "government" | "private";
 
 export type StatutoryDiscountType = "regular" | "senior" | "pwd";
 
@@ -83,6 +89,10 @@ export interface EligibilitySnapshot {
   accommodation_type: AccommodationType;
   has_mdr_or_pin: boolean;
   facility_level: FacilityLevel;
+  /** Hospital ownership ('government' | 'private'); NBB Zero Co-Payment applies only to government facilities. */
+  facility_ownership?: FacilityOwnership;
+  /** True when a government hospital had no basic/ward bed available at admission (NBB private-room exception). */
+  no_ward_bed_available?: boolean;
 }
 
 export interface ExtractedLineItem {
@@ -121,6 +131,8 @@ export interface AuditedLineItem extends ExtractedLineItem {
   matched_package_code?: string;
   matched_package_name?: string;
   suggested_deduction?: number;
+  /** Signed peso adjustment requested (-billed_amount for NBB write-offs; 0 for itemized_verification). */
+  requested_adjustment?: number;
   is_unbundled_overcharge?: boolean;
   statutory_discount_eligible?: boolean;
   /** True when the user manually changed this item's tier in the Audit Studio. */
@@ -202,6 +214,8 @@ export interface ExtractedBillData {
   statutory_discount_type?: StatutoryDiscountType;
   /** Optional PhilHealth membership & accommodation snapshot captured at scan/audit time. */
   eligibility_snapshot?: EligibilitySnapshot;
+  /** Inferred or user-selected hospital ownership ('government' | 'private'). */
+  facility_ownership?: FacilityOwnership;
 }
 
 export interface AuditFlag {
@@ -229,8 +243,12 @@ export interface MatchedCasePackage {
   /** Human-readable inclusions from the PhilHealth circular (display only). */
   inclusive_items: string[];
   circular_id?: string;
+  /** Official circular reference (e.g., "PC-2024-0037"). */
+  circular_number?: string;
   effective_from?: string;
   effective_to?: string | null;
+  /** Circular number that superseded this version (e.g., "PC-2024-0037"). */
+  superseded_by?: string | null;
   source_url?: string | null;
   /** False when the package was auto-discovered by AI rather than verified from an official PhilHealth circular. */
   is_verified?: boolean;
@@ -266,8 +284,10 @@ export interface StatutoryRule {
   incomplete_threshold: number;
   eligible_categories: ExtractedLineItem["category"][];
   citation: string;
+  circular_number?: string;
   effective_from?: string;
   effective_to?: string | null;
+  superseded_by?: string | null;
 }
 
 export interface AuditEngineResult {
@@ -289,6 +309,14 @@ export interface AuditEngineResult {
   senior_pwd_savings: number;
   statutory_discount_type: StatutoryDiscountType;
   eligibility_snapshot?: EligibilitySnapshot;
+  /** Primary matched PhilHealth circular number (e.g., "PC-2024-0037"). */
+  circular_number?: string;
+  /** Hospital ownership ('government' | 'private') governing NBB & assistance routing. */
+  facility_ownership: FacilityOwnership;
+  /** Strict PhilHealth NBB eligibility (government facility + NBB member + basic ward or no-ward-bed exception). */
+  is_nbb_eligible: boolean;
+  /** Dynamic reconciled balance label based on whether PhilHealth was already deducted on the SOA. */
+  reconciled_balance_label: string;
   detected_case_packages: MatchedCasePackage[];
   line_items: AuditedLineItem[];
   flags: AuditFlag[];

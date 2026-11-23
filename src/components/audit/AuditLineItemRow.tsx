@@ -102,6 +102,7 @@ export function AuditLineItemRow({
             "mt-3 border-l-2 pl-3.5 py-1 text-xs leading-relaxed",
             item.status === "covered" && "border-emerald-500 text-slate-600",
             item.status === "review_worthy" && "border-amber-500 text-slate-600",
+            item.status === "itemized_verification" && "border-blue-500 text-slate-600",
             item.status === "out_of_pocket" && "border-rose-500 text-slate-600"
           )}
         >

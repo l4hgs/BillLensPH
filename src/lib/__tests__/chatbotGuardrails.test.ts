@@ -63,7 +63,13 @@ describe("AI Chatbot Guardrails & Personality (Billy)", () => {
         accommodation_type: "non_basic_private",
         has_mdr_or_pin: true,
         facility_level: "level_3",
+        facility_ownership: "private",
+        no_ward_bed_available: false,
       },
+      facility_ownership: "private",
+      is_nbb_eligible: false,
+      reconciled_balance_label:
+        "Reconciled Balance Due (After PhilHealth Case Rate)",
       detected_case_packages: [
         {
           code: "47562",

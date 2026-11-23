@@ -347,6 +347,17 @@ export function StatementStagingCard({
             ·
           </span>
           <span className="whitespace-nowrap">
+            Facility:{" "}
+            <strong className="font-semibold text-slate-900">
+              {activeEligibility.facility_ownership === "government"
+                ? "Government"
+                : "Private"}
+            </strong>
+          </span>
+          <span className="text-slate-400" aria-hidden="true">
+            ·
+          </span>
+          <span className="whitespace-nowrap">
             Ward:{" "}
             <strong className="font-semibold text-slate-900">
               {activeEligibility.accommodation_type === "basic_ward"

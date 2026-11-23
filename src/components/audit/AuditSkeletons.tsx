@@ -2,6 +2,35 @@
 
 import React from "react";
 
+function ArchiveStatementRowsSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          className="py-3.5 sm:py-5 px-1 sm:px-3 flex items-center gap-3 sm:gap-4"
+        >
+          <div className="w-16 h-20 sm:w-20 sm:h-24 md:w-24 md:h-28 rounded-xl bg-slate-100 border border-slate-200/60 shrink-0" />
+          <div className="flex-1 min-w-0 flex items-center justify-between gap-3 sm:gap-4 py-1">
+            <div className="space-y-2 flex-1 min-w-0">
+              <div className="h-5 w-48 sm:w-64 rounded bg-slate-200/70" />
+              <div className="h-3 w-36 sm:w-48 rounded bg-slate-100" />
+              <div className="flex items-center gap-2 pt-0.5">
+                <div className="h-5 w-28 rounded-full bg-slate-100" />
+                <div className="h-5 w-24 rounded-full bg-slate-100" />
+              </div>
+            </div>
+            <div className="h-5 w-24 rounded bg-slate-200/70 shrink-0" />
+          </div>
+          <div className="w-[44px] h-[44px] flex items-center justify-center shrink-0">
+            <div className="h-4 w-4 rounded bg-slate-100" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 /**
  * Full-page layout-matched skeleton for /audits (Archive Page).
  * Mirrors the editorial header + metric, search bar, filter tabs, and 5 statement rows.
@@ -44,28 +73,7 @@ export function ArchiveFullSkeleton() {
 
       {/* Statement Rows Skeleton */}
       <div className="divide-y divide-slate-200/80 border-b border-slate-200/80">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className="py-3.5 sm:py-5 px-1 sm:px-3 flex items-center gap-3 sm:gap-4"
-          >
-            <div className="w-16 h-20 sm:w-20 sm:h-24 md:w-24 md:h-28 rounded-xl bg-slate-100 border border-slate-200/60 shrink-0" />
-            <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
-              <div className="space-y-2 flex-1 min-w-0">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4">
-                  <div className="h-5 w-48 sm:w-64 rounded bg-slate-200/70" />
-                  <div className="h-5 w-24 rounded bg-slate-200/70 shrink-0" />
-                </div>
-                <div className="h-3 w-36 sm:w-48 rounded bg-slate-100" />
-                <div className="flex items-center gap-2 pt-0.5">
-                  <div className="h-5 w-28 rounded-full bg-slate-100" />
-                  <div className="h-5 w-24 rounded-full bg-slate-100" />
-                </div>
-              </div>
-              <div className="h-5 w-5 rounded bg-slate-100 shrink-0" />
-            </div>
-          </div>
-        ))}
+        <ArchiveStatementRowsSkeleton />
       </div>
     </div>
   );
@@ -85,25 +93,7 @@ export function ArchivePageSkeleton() {
     >
       <span className="sr-only">Loading audited hospital statements...</span>
 
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="py-3.5 sm:py-5 px-1 sm:px-3 flex items-center gap-3 sm:gap-4">
-          <div className="w-16 h-20 sm:w-20 sm:h-24 md:w-24 md:h-28 rounded-xl bg-slate-100 border border-slate-200/60 shrink-0" />
-          <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
-            <div className="space-y-2 flex-1 min-w-0">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4">
-                <div className="h-5 w-48 sm:w-64 rounded bg-slate-200/70" />
-                <div className="h-5 w-24 rounded bg-slate-200/70 shrink-0" />
-              </div>
-              <div className="h-3 w-36 sm:w-48 rounded bg-slate-100" />
-              <div className="flex items-center gap-2 pt-0.5">
-                <div className="h-5 w-28 rounded-full bg-slate-100" />
-                <div className="h-5 w-24 rounded-full bg-slate-100" />
-              </div>
-            </div>
-            <div className="h-5 w-5 rounded bg-slate-100 shrink-0" />
-          </div>
-        </div>
-      ))}
+      <ArchiveStatementRowsSkeleton />
     </div>
   );
 }

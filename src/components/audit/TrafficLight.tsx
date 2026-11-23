@@ -1,19 +1,20 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { CheckCircle2, AlertTriangle, Wallet } from "lucide-react";
+import { CheckCircle2, AlertTriangle, FileSearch, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatPHP } from "@/lib/utils";
 import type { AuditTier, AuditedLineItem } from "@/types/audit";
 
 /**
- * Single source of truth for the three-tier traffic-light system.
+ * Single source of truth for the traffic-light & verification tier system.
  * Every tier pairs a color with an icon and a text label so the meaning never
  * depends on color alone.
  */
 export const TIER_ORDER: AuditTier[] = [
   "covered",
   "review_worthy",
+  "itemized_verification",
   "out_of_pocket",
 ];
 
@@ -23,7 +24,7 @@ export const TIER_META: Record<
     label: string;
     short: string;
     description: string;
-    badge: "covered" | "review" | "out-of-pocket";
+    badge: "covered" | "review" | "primary" | "out-of-pocket";
     Icon: React.ComponentType<{ className?: string }>;
     bar: string;
     tile: string;
@@ -55,6 +56,18 @@ export const TIER_META: Record<
     tileActive: "border-amber-500 bg-amber-50 ring-2 ring-amber-500/20",
     iconWrap: "bg-amber-100 text-amber-700",
     callout: "bg-amber-50 border-amber-200 text-amber-900",
+  },
+  itemized_verification: {
+    label: "Itemized Verification Requested",
+    short: "Verify",
+    description: "Request itemized charge slips from billing",
+    badge: "primary",
+    Icon: FileSearch,
+    bar: "bg-blue-500",
+    tile: "border-blue-200/80 bg-blue-50/40 hover:bg-blue-50",
+    tileActive: "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20",
+    iconWrap: "bg-blue-100 text-blue-700",
+    callout: "bg-blue-50 border-blue-200 text-blue-900",
   },
   out_of_pocket: {
     label: "Out-of-Pocket",
@@ -226,7 +239,7 @@ export function TrafficLightSummary({
         ref={tablistRef}
         role="tablist"
         aria-label="Filter line items by audit tier"
-        className="relative grid grid-cols-2 lg:grid-cols-4 gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60"
+        className="relative grid grid-cols-2 lg:grid-cols-5 gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60"
       >
         {indicatorStyle && (
           <div

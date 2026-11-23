@@ -263,8 +263,10 @@ export function toCatalogPackage(
     total_case_rate: number | string | null;
     inclusive_items: string[] | null;
     circular_id?: string | null;
+    circular_number?: string | null;
     effective_from?: string | null;
     effective_to?: string | null;
+    superseded_by?: string | null;
     source_url?: string | null;
     is_verified?: boolean | null;
     is_estimated_split?: boolean | null;
@@ -280,19 +282,39 @@ export function toCatalogPackage(
   const isVerified =
     typeof row.is_verified === "boolean" ? row.is_verified : !isAiGrounded;
 
+  const split = reconcilePackageSplit(
+    Number(row.hci_fee) || 0,
+    Number(row.prof_fee) || 0,
+    Number(row.total_case_rate) || 0,
+    { case_code: row.case_code, is_verified: isVerified }
+  );
+
+  const resolvedCircularNumber = formatCircularNumber(
+    row.circular_number,
+    row.circular_id
+  );
+  const resolvedEstimatedSplit =
+    typeof row.is_estimated_split === "boolean"
+      ? row.is_estimated_split
+      : split.is_estimated_split;
+
   return {
     code: row.case_code,
     keyword: row.procedure_keyword,
-    hci_fee: Number(row.hci_fee) || 0,
-    prof_fee: Number(row.prof_fee) || 0,
-    total_rate: Number(row.total_case_rate) || 0,
+    hci_fee: split.hci_fee,
+    prof_fee: split.prof_fee,
+    total_rate: split.total_case_rate,
     inclusive_items: row.inclusive_items || [],
     circular_id: row.circular_id ?? undefined,
+    ...(resolvedCircularNumber ? { circular_number: resolvedCircularNumber } : {}),
     effective_from: row.effective_from ?? undefined,
     effective_to: row.effective_to ?? null,
+    ...(row.superseded_by !== undefined
+      ? { superseded_by: row.superseded_by }
+      : {}),
     source_url: row.source_url ?? null,
     is_verified: isVerified,
-    ...(row.is_estimated_split ? { is_estimated_split: true } : {}),
+    ...(resolvedEstimatedSplit ? { is_estimated_split: true } : {}),
     aliases: resolvedAliases,
   };
 }
@@ -506,8 +528,10 @@ export interface SeedPackageInput {
   case_code: string;
   procedure_keyword: string;
   circular_id: string;
+  circular_number?: string;
   effective_from: string;
   effective_to?: string | null;
+  superseded_by?: string | null;
   source_url?: string | null;
   is_verified?: boolean;
   is_estimated_split?: boolean;
@@ -534,12 +558,26 @@ function splitDelimitedList(raw: unknown): string[] {
 /** Tolerance (in pesos) before `hci_fee + prof_fee` is treated as inconsistent with `total_case_rate`. */
 const PACKAGE_SPLIT_TOLERANCE = 1;
 
-/**
- * Default HCI share used only when a package arrives with a `total_case_rate`
- * but no HCI/PF split (PhilHealth All Case Rates commonly allocate ~70% to the
- * Health Care Institution and ~30% to Professional Fees).
- */
-const DEFAULT_HCI_SHARE = 0.7;
+/** Official PhilHealth ACR HCI share for surgical RVS (numeric) codes: 60% HCI / 40% PF. */
+const RVS_SURGICAL_HCI_SHARE = 0.6;
+
+/** Official PhilHealth ACR HCI share for medical ICD-10 (alphanumeric) codes and AI fallback: 70% HCI / 30% PF. */
+const ICD_MEDICAL_HCI_SHARE = 0.7;
+
+export function isNumericRvsCode(caseCode?: string | null): boolean {
+  return /^\d+$/.test((caseCode ?? "").trim());
+}
+
+export function formatCircularNumber(
+  circularNumber?: string | null,
+  circularId?: string | null
+): string | undefined {
+  const explicit = circularNumber?.trim();
+  if (explicit) return explicit;
+  const id = circularId?.trim();
+  if (!id) return undefined;
+  return /^PC-/i.test(id) ? id.toUpperCase() : `PC-${id}`;
+}
 
 function roundPeso(value: number): number {
   return Math.round(value * 100) / 100;
@@ -547,15 +585,20 @@ function roundPeso(value: number): number {
 
 /**
  * Enforces consistency between `hci_fee`, `prof_fee`, and `total_case_rate`:
- *  - If an HCI/PF split is present and differs from the total by more than ₱1,
- *    the split wins and `total_case_rate = round(hci_fee + prof_fee, 2)`.
- *  - If only `total_case_rate` is present, the split is derived proportionally
- *    (`DEFAULT_HCI_SHARE` HCI / remainder PF) so HCI vs PF cap checks still work.
+ *  1. If an explicit HCI/PF split is present (`hci + prof > 0`), it takes
+ *     precedence (`is_estimated_split: false`), normalizing `total_case_rate`
+ *     if it differs by more than ₱1.
+ *  2. If a verified circular package (`is_verified === true`) omits the split,
+ *     derives 60% HCI / 40% PF for numeric RVS surgical codes or 70% HCI / 30% PF
+ *     for alphanumeric ICD-10 medical codes (`is_estimated_split: false`).
+ *  3. If an unverified / AI-discovered package omits the split, applies the
+ *     70% HCI / 30% PF fallback and flags `is_estimated_split: true`.
  */
 export function reconcilePackageSplit(
   rawHci: number,
   rawProf: number,
-  rawTotal: number
+  rawTotal: number,
+  options?: { case_code?: string | null; is_verified?: boolean }
 ): {
   hci_fee: number;
   prof_fee: number;
@@ -582,12 +625,17 @@ export function reconcilePackageSplit(
   }
 
   if (total > 0) {
-    const hci_fee = roundPeso(total * DEFAULT_HCI_SHARE);
+    const isVerified = options?.is_verified === true;
+    const hciShare =
+      isVerified && isNumericRvsCode(options?.case_code)
+        ? RVS_SURGICAL_HCI_SHARE
+        : ICD_MEDICAL_HCI_SHARE;
+    const hci_fee = roundPeso(total * hciShare);
     return {
       hci_fee,
       prof_fee: roundPeso(total - hci_fee),
       total_case_rate: total,
-      is_estimated_split: true,
+      is_estimated_split: !isVerified,
     };
   }
 
@@ -619,6 +667,10 @@ export function normalizeSeedPackage(
 
   const circular_id =
     String(raw.circular_id ?? "2024-0037").trim() || "2024-0037";
+  const circular_number = formatCircularNumber(
+    typeof raw.circular_number === "string" ? raw.circular_number : null,
+    circular_id
+  );
   const effective_from =
     String(raw.effective_from ?? "2024-10-01")
       .trim()
@@ -627,16 +679,30 @@ export function normalizeSeedPackage(
     typeof raw.effective_to === "string" && raw.effective_to.trim()
       ? raw.effective_to.trim().slice(0, 10)
       : null;
+  const superseded_by =
+    typeof raw.superseded_by === "string" && raw.superseded_by.trim()
+      ? raw.superseded_by.trim()
+      : null;
   const source_url =
     typeof raw.source_url === "string" && raw.source_url.trim()
       ? raw.source_url.trim()
       : null;
 
+  const is_verified =
+    typeof raw.is_verified === "boolean"
+      ? raw.is_verified
+      : typeof raw.isVerified === "boolean"
+        ? raw.isVerified
+        : source_url?.startsWith("ai_grounded")
+          ? false
+          : undefined;
+
   const { hci_fee, prof_fee, total_case_rate, is_estimated_split } =
     reconcilePackageSplit(
       Number(raw.hci_fee ?? raw.hciFee ?? 0),
       Number(raw.prof_fee ?? raw.profFee ?? 0),
-      Number(raw.total_case_rate ?? raw.total_rate ?? raw.totalRate)
+      Number(raw.total_case_rate ?? raw.total_rate ?? raw.totalRate),
+      { case_code, is_verified: is_verified === true }
     );
 
   const inclusive_items = splitDelimitedList(
@@ -670,21 +736,14 @@ export function normalizeSeedPackage(
     }
   }
 
-  const is_verified =
-    typeof raw.is_verified === "boolean"
-      ? raw.is_verified
-      : typeof raw.isVerified === "boolean"
-        ? raw.isVerified
-        : source_url?.startsWith("ai_grounded")
-          ? false
-          : undefined;
-
   return {
     case_code,
     procedure_keyword,
     circular_id,
+    ...(circular_number ? { circular_number } : {}),
     effective_from,
     effective_to,
+    ...(superseded_by !== null ? { superseded_by } : {}),
     source_url,
     ...(is_verified !== undefined ? { is_verified } : {}),
     ...(is_estimated_split ? { is_estimated_split } : {}),
