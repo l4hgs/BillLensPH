@@ -144,7 +144,12 @@ export function AuthClient({ initialUser = null }: { initialUser?: User | null }
         ? window.location.origin
         : envSiteUrl || "";
     const callbackUrl = new URL("/auth/callback", origin);
-    if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
+    if (
+      nextPath &&
+      nextPath !== "/scanner" &&
+      nextPath.startsWith("/") &&
+      !nextPath.startsWith("//")
+    ) {
       callbackUrl.searchParams.set("next", nextPath);
     }
     return callbackUrl.toString();
