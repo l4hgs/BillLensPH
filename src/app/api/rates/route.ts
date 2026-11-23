@@ -23,9 +23,11 @@ export async function GET() {
       statutoryRule: catalog.statutoryRule ?? null,
     });
   } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Failed to load PhilHealth catalog.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("GET /api/rates error:", err);
+    return NextResponse.json(
+      { error: "Failed to load PhilHealth catalog. Please try again." },
+      { status: 500 }
+    );
   }
 }
 
@@ -62,29 +64,52 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    let inputs: SeedPackageInput[] = [];
-
-    if (typeof body.csv === "string" && body.csv.trim()) {
-      inputs = parseCatalogCsv(body.csv);
-    } else if (Array.isArray(body.packages)) {
-      inputs = body.packages.map((item: unknown) =>
-        normalizeSeedPackage((item ?? {}) as Record<string, unknown>)
-      );
-    } else if (body.package && typeof body.package === "object") {
-      inputs = [
-        normalizeSeedPackage(body.package as Record<string, unknown>),
-      ];
-    } else if (body.case_code || body.code) {
-      inputs = [normalizeSeedPackage(body as Record<string, unknown>)];
-    } else {
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json(
+          { error: "Invalid JSON request body." },
+          { status: 400 }
+        );
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
       return NextResponse.json(
-        {
-          error:
-            "Provide `package` (object), `packages` (array), or `csv` (string) to sync.",
-        },
+        { error: "Invalid JSON request body." },
         { status: 400 }
       );
+    }
+
+    let inputs: SeedPackageInput[] = [];
+    try {
+      if (typeof body.csv === "string" && body.csv.trim()) {
+        inputs = parseCatalogCsv(body.csv);
+      } else if (Array.isArray(body.packages)) {
+        inputs = body.packages.map((item: unknown) =>
+          normalizeSeedPackage((item ?? {}) as Record<string, unknown>)
+        );
+      } else if (body.package && typeof body.package === "object") {
+        inputs = [
+          normalizeSeedPackage(body.package as Record<string, unknown>),
+        ];
+      } else if (body.case_code || body.code) {
+        inputs = [normalizeSeedPackage(body)];
+      } else {
+        return NextResponse.json(
+          {
+            error:
+              "Provide `package` (object), `packages` (array), or `csv` (string) to sync.",
+          },
+          { status: 400 }
+        );
+      }
+    } catch (parseErr: unknown) {
+      const validationMessage =
+        parseErr instanceof Error
+          ? parseErr.message
+          : "Invalid PhilHealth package payload.";
+      return NextResponse.json({ error: validationMessage }, { status: 400 });
     }
 
     const stats = await upsertCatalogPackages(supabase, inputs);
@@ -96,10 +121,10 @@ export async function POST(req: NextRequest) {
       packages: updatedCatalog.packages,
     });
   } catch (err: unknown) {
-    const message =
-      err instanceof Error
-        ? err.message
-        : "Failed to sync PhilHealth circular rates.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error("POST /api/rates error:", err);
+    return NextResponse.json(
+      { error: "Failed to sync PhilHealth circular rates. Please try again." },
+      { status: 500 }
+    );
   }
 }

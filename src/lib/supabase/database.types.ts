@@ -13,11 +13,11 @@ export type Database = {
         Row: {
           id: string;
           full_name: string | null;
-          role?: "member" | "staff" | "admin";
-          contributor_type?: "direct" | "indirect_nbb" | "lifetime" | "unknown";
-          accommodation_type?: "basic_ward" | "non_basic_private" | "unknown";
-          has_mdr_or_pin?: boolean;
-          facility_level?: "level_1" | "level_2" | "level_3" | "asc" | "unknown";
+          role: "member" | "staff" | "admin";
+          contributor_type: "direct" | "indirect_nbb" | "lifetime" | "unknown";
+          accommodation_type: "basic_ward" | "non_basic_private" | "unknown";
+          has_mdr_or_pin: boolean;
+          facility_level: "level_1" | "level_2" | "level_3" | "asc" | "unknown";
           created_at: string;
         };
         Insert: {
@@ -49,7 +49,7 @@ export type Database = {
           hospital_name: string;
           total_billed: number;
           estimated_out_of_pocket: number;
-          statutory_discount_type?: "regular" | "senior" | "pwd";
+          statutory_discount_type: "regular" | "senior" | "pwd";
           eligibility_snapshot?: Json | null;
           raw_extracted_data: Json | null;
           audit_results: Json | null;
@@ -90,11 +90,11 @@ export type Database = {
           prof_fee: number;
           total_case_rate: number;
           inclusive_items: string[];
-          circular_id?: string;
-          effective_from?: string;
-          effective_to?: string | null;
-          source_url?: string | null;
-          is_verified?: boolean;
+          circular_id: string;
+          effective_from: string;
+          effective_to: string | null;
+          source_url: string | null;
+          is_verified: boolean;
         };
         Insert: {
           id?: string;

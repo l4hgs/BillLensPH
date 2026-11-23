@@ -66,7 +66,7 @@ export function buildPlainTextNegotiationBrief(
                 pkg.total_rate
               )} (HCI Fee: ${formatPHP(pkg.hci_fee)} | PF Share: ${formatPHP(
                 pkg.prof_fee
-              )})`
+              )}${pkg.is_estimated_split ? " — est. 70/30 split" : ""})`
           )
           .join("\n")
       : "  • Standard PhilHealth / Statutory Review (No specific RVS/ICD package matched)";
@@ -419,6 +419,11 @@ export function NegotiationBriefDocument({
                     <strong className="text-[#2563EB] font-mono tabular-nums">
                       {formatPHP(pkg.total_rate)}
                     </strong>
+                    {pkg.is_estimated_split && (
+                      <span className="ml-1.5 text-[10px] font-medium text-amber-700">
+                        (est. 70/30 split)
+                      </span>
+                    )}
                   </span>
                 </li>
               ))}

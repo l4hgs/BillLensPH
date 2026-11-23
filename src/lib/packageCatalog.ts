@@ -267,6 +267,7 @@ export function toCatalogPackage(
     effective_to?: string | null;
     source_url?: string | null;
     is_verified?: boolean | null;
+    is_estimated_split?: boolean | null;
   },
   aliases?: PackageAlias[]
 ): CatalogPackage {
@@ -291,6 +292,7 @@ export function toCatalogPackage(
     effective_to: row.effective_to ?? null,
     source_url: row.source_url ?? null,
     is_verified: isVerified,
+    ...(row.is_estimated_split ? { is_estimated_split: true } : {}),
     aliases: resolvedAliases,
   };
 }
@@ -508,6 +510,7 @@ export interface SeedPackageInput {
   effective_to?: string | null;
   source_url?: string | null;
   is_verified?: boolean;
+  is_estimated_split?: boolean;
   hci_fee: number;
   prof_fee: number;
   total_case_rate: number;
@@ -526,6 +529,74 @@ function splitDelimitedList(raw: unknown): string[] {
       .filter(Boolean);
   }
   return [];
+}
+
+/** Tolerance (in pesos) before `hci_fee + prof_fee` is treated as inconsistent with `total_case_rate`. */
+const PACKAGE_SPLIT_TOLERANCE = 1;
+
+/**
+ * Default HCI share used only when a package arrives with a `total_case_rate`
+ * but no HCI/PF split (PhilHealth All Case Rates commonly allocate ~70% to the
+ * Health Care Institution and ~30% to Professional Fees).
+ */
+const DEFAULT_HCI_SHARE = 0.7;
+
+function roundPeso(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Enforces consistency between `hci_fee`, `prof_fee`, and `total_case_rate`:
+ *  - If an HCI/PF split is present and differs from the total by more than ₱1,
+ *    the split wins and `total_case_rate = round(hci_fee + prof_fee, 2)`.
+ *  - If only `total_case_rate` is present, the split is derived proportionally
+ *    (`DEFAULT_HCI_SHARE` HCI / remainder PF) so HCI vs PF cap checks still work.
+ */
+export function reconcilePackageSplit(
+  rawHci: number,
+  rawProf: number,
+  rawTotal: number
+): {
+  hci_fee: number;
+  prof_fee: number;
+  total_case_rate: number;
+  is_estimated_split: boolean;
+} {
+  const hci = roundPeso(Math.max(0, Number.isFinite(rawHci) ? rawHci : 0));
+  const prof = roundPeso(Math.max(0, Number.isFinite(rawProf) ? rawProf : 0));
+  const total =
+    Number.isFinite(rawTotal) && rawTotal > 0 ? roundPeso(rawTotal) : 0;
+  const splitSum = roundPeso(hci + prof);
+
+  if (splitSum > 0) {
+    const total_case_rate =
+      total > 0 && Math.abs(total - splitSum) <= PACKAGE_SPLIT_TOLERANCE
+        ? total
+        : splitSum;
+    return {
+      hci_fee: hci,
+      prof_fee: prof,
+      total_case_rate,
+      is_estimated_split: false,
+    };
+  }
+
+  if (total > 0) {
+    const hci_fee = roundPeso(total * DEFAULT_HCI_SHARE);
+    return {
+      hci_fee,
+      prof_fee: roundPeso(total - hci_fee),
+      total_case_rate: total,
+      is_estimated_split: true,
+    };
+  }
+
+  return {
+    hci_fee: 0,
+    prof_fee: 0,
+    total_case_rate: 0,
+    is_estimated_split: false,
+  };
 }
 
 /**
@@ -561,11 +632,12 @@ export function normalizeSeedPackage(
       ? raw.source_url.trim()
       : null;
 
-  const hci_fee = Math.max(0, Number(raw.hci_fee ?? raw.hciFee ?? 0) || 0);
-  const prof_fee = Math.max(0, Number(raw.prof_fee ?? raw.profFee ?? 0) || 0);
-  const rawTotal = Number(raw.total_case_rate ?? raw.total_rate ?? raw.totalRate);
-  const total_case_rate =
-    Number.isFinite(rawTotal) && rawTotal > 0 ? rawTotal : hci_fee + prof_fee;
+  const { hci_fee, prof_fee, total_case_rate, is_estimated_split } =
+    reconcilePackageSplit(
+      Number(raw.hci_fee ?? raw.hciFee ?? 0),
+      Number(raw.prof_fee ?? raw.profFee ?? 0),
+      Number(raw.total_case_rate ?? raw.total_rate ?? raw.totalRate)
+    );
 
   const inclusive_items = splitDelimitedList(
     raw.inclusive_items ?? raw.inclusiveItems
@@ -615,6 +687,7 @@ export function normalizeSeedPackage(
     effective_to,
     source_url,
     ...(is_verified !== undefined ? { is_verified } : {}),
+    ...(is_estimated_split ? { is_estimated_split } : {}),
     hci_fee,
     prof_fee,
     total_case_rate,

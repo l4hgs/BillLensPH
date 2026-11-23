@@ -10,7 +10,34 @@ export const maxDuration = 45;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Authentication required." },
+        { status: 401 }
+      );
+    }
+
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json(
+          { error: "Invalid JSON request body." },
+          { status: 400 }
+        );
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON request body." },
+        { status: 400 }
+      );
+    }
     const query = typeof body.query === "string" ? body.query.trim() : "";
 
     if (!query || query.length < 2) {
@@ -45,7 +72,6 @@ export async function POST(req: NextRequest) {
 
     let persistedToDb = false;
     try {
-      const supabase = await createClient();
       await upsertCatalogPackages(supabase, unverifiedSeeds);
       persistedToDb = true;
     } catch (dbErr) {
@@ -69,6 +95,7 @@ export async function POST(req: NextRequest) {
           effective_to: item.effective_to ?? null,
           source_url: item.source_url ?? "ai_grounded:philhealth-acr",
           is_verified: false,
+          is_estimated_split: item.is_estimated_split,
         },
         item.aliases
       )
@@ -80,10 +107,13 @@ export async function POST(req: NextRequest) {
       packages,
     });
   } catch (err: unknown) {
-    const message =
-      err instanceof Error
-        ? err.message
-        : "Failed to auto-discover PhilHealth case rate.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("POST /api/rates/discover error:", err);
+    return NextResponse.json(
+      {
+        error:
+          "Unable to auto-discover PhilHealth case rates right now. Please try again.",
+      },
+      { status: 500 }
+    );
   }
 }

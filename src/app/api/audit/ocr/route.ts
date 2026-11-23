@@ -18,6 +18,14 @@ import type {
 } from "@/types/audit";
 
 export const maxDuration = 60; // Allow sufficient time for multimodal AI processing
+const MAX_OCR_PAGES = 10;
+const MAX_TOTAL_DECODED_BYTES = 15 * 1024 * 1024; // 15 MB
+
+function estimateBase64DecodedBytes(base64: string): number {
+  const cleaned = base64.replace(/^data:[^;]+;base64,/, "").replace(/\s+/g, "");
+  const padding = cleaned.endsWith("==") ? 2 : cleaned.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((cleaned.length * 3) / 4) - padding);
+}
 
 interface StagedFileRecord {
   path: string;
@@ -40,7 +48,35 @@ function inferMimeType(filePath: string, explicitMime?: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Authentication required." },
+        { status: 401 }
+      );
+    }
+
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json(
+          { error: "Invalid JSON request body." },
+          { status: 400 }
+        );
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON request body." },
+        { status: 400 }
+      );
+    }
+
     const {
       auditId,
       imageBase64,
@@ -49,15 +85,18 @@ export async function POST(req: NextRequest) {
       isSeniorOrPwd,
       statutoryDiscountType,
       eligibilitySnapshot,
-    } = body;
+    } = body as {
+      auditId?: string;
+      imageBase64?: string;
+      mimeType?: string;
+      pages?: InlinePagePayload[];
+      isSeniorOrPwd?: boolean;
+      statutoryDiscountType?: unknown;
+      eligibilitySnapshot?: unknown;
+    };
 
     const targetAuditId = auditId || `audit-${Date.now()}`;
     let existingRaw: Record<string, Json | undefined> = {};
-
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
 
     // 1. Load the PhilHealth package catalog from Supabase first.
     //    If the catalog is empty or unreachable, fail fast with a clear error
@@ -76,10 +115,29 @@ export async function POST(req: NextRequest) {
 
     // 2. Collect all page payloads (inline `pages[]`, inline `imageBase64`, or all staged files in Supabase Storage)
     const pageInputs: GeminiVisionOptions[] = [];
+    let totalDecodedBytes = 0;
 
     if (Array.isArray(pages) && pages.length > 0) {
+      if (pages.length > MAX_OCR_PAGES) {
+        return NextResponse.json(
+          {
+            error: `Too many statement pages (${pages.length}). Maximum allowed per request is ${MAX_OCR_PAGES}.`,
+          },
+          { status: 400 }
+        );
+      }
       for (const p of pages as InlinePagePayload[]) {
         if (p && typeof p.imageBase64 === "string" && p.imageBase64.trim()) {
+          totalDecodedBytes += estimateBase64DecodedBytes(p.imageBase64);
+          if (totalDecodedBytes > MAX_TOTAL_DECODED_BYTES) {
+            return NextResponse.json(
+              {
+                error:
+                  "Total statement payload exceeds the 15 MB limit. Please compress or upload fewer pages.",
+              },
+              { status: 413 }
+            );
+          }
           pageInputs.push({
             base64Data: p.imageBase64,
             mimeType: p.mimeType || "image/jpeg",
@@ -87,6 +145,16 @@ export async function POST(req: NextRequest) {
         }
       }
     } else if (typeof imageBase64 === "string" && imageBase64.trim()) {
+      totalDecodedBytes += estimateBase64DecodedBytes(imageBase64);
+      if (totalDecodedBytes > MAX_TOTAL_DECODED_BYTES) {
+        return NextResponse.json(
+          {
+            error:
+              "Total statement payload exceeds the 15 MB limit. Please compress the image and try again.",
+          },
+          { status: 413 }
+        );
+      }
       pageInputs.push({
         base64Data: imageBase64,
         mimeType: mimeType || "image/jpeg",
@@ -98,6 +166,7 @@ export async function POST(req: NextRequest) {
         .from("audits")
         .select("*")
         .eq("id", auditId)
+        .eq("user_id", user.id)
         .single();
 
       if (auditFetchErr || !auditRecord) {
@@ -133,6 +202,15 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      if (stagedFiles.length > MAX_OCR_PAGES) {
+        return NextResponse.json(
+          {
+            error: `Too many staged pages (${stagedFiles.length}). Maximum allowed per request is ${MAX_OCR_PAGES}.`,
+          },
+          { status: 400 }
+        );
+      }
+
       // Download EVERY staged page in order so multi-page SOAs never drop pages 2..N
       for (const staged of stagedFiles) {
         if (!staged.path) continue;
@@ -141,15 +219,30 @@ export async function POST(req: NextRequest) {
           .download(staged.path);
 
         if (downloadErr || !fileBlob) {
+          console.error(
+            `Failed to download staged file "${staged.path}" from storage:`,
+            downloadErr
+          );
           return NextResponse.json(
             {
-              error: `Failed to download staged file "${staged.path}" from storage: ${downloadErr?.message}`,
+              error:
+                "Could not retrieve one of the uploaded statement pages from secure storage.",
             },
             { status: 500 }
           );
         }
 
         const arrayBuffer = await fileBlob.arrayBuffer();
+        totalDecodedBytes += arrayBuffer.byteLength;
+        if (totalDecodedBytes > MAX_TOTAL_DECODED_BYTES) {
+          return NextResponse.json(
+            {
+              error:
+                "Total statement payload exceeds the 15 MB limit. Please compress or upload fewer pages.",
+            },
+            { status: 413 }
+          );
+        }
         pageInputs.push({
           base64Data: Buffer.from(arrayBuffer).toString("base64"),
           mimeType: inferMimeType(staged.path, staged.mime_type),
@@ -161,6 +254,7 @@ export async function POST(req: NextRequest) {
         .from("audits")
         .select("raw_extracted_data")
         .eq("id", auditId)
+        .eq("user_id", user.id)
         .maybeSingle();
       if (auditRecord?.raw_extracted_data) {
         existingRaw = auditRecord.raw_extracted_data as Record<
@@ -254,7 +348,8 @@ export async function POST(req: NextRequest) {
       let { error: updateErr } = await supabase
         .from("audits")
         .update(fullUpdatePayload)
-        .eq("id", auditId);
+        .eq("id", auditId)
+        .eq("user_id", user.id);
 
       if (updateErr && /eligibility_snapshot/i.test(updateErr.message)) {
         const fallbackPayload = { ...fullUpdatePayload };
@@ -262,14 +357,22 @@ export async function POST(req: NextRequest) {
         const retry = await supabase
           .from("audits")
           .update(fallbackPayload)
-          .eq("id", auditId);
+          .eq("id", auditId)
+          .eq("user_id", user.id);
         updateErr = retry.error;
       }
 
       if (updateErr) {
-        console.warn(
+        console.error(
           "Could not update audit record in database:",
           updateErr.message
+        );
+        return NextResponse.json(
+          {
+            error:
+              "Statement was analyzed, but saving the audit results failed. Please try again.",
+          },
+          { status: 500 }
         );
       }
     }
@@ -283,8 +386,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     console.error("OCR Audit API Route error:", err);
-    const message =
-      err instanceof Error ? err.message : "Internal OCR processing error.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          "Unable to process the statement right now. Please try again shortly.",
+      },
+      { status: 500 }
+    );
   }
 }

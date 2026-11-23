@@ -192,6 +192,7 @@ function toPublicPackage(pkg: CatalogPackage): MatchedCasePackage {
       ? { effective_to: pkg.effective_to }
       : {}),
     ...(pkg.source_url !== undefined ? { source_url: pkg.source_url } : {}),
+    ...(pkg.is_estimated_split ? { is_estimated_split: true } : {}),
   };
 }
 
@@ -607,11 +608,40 @@ export function runAuditEngine(
     extracted.philhealth_total > 0 &&
     extracted.senior_pwd_discount_total > 0
   ) {
-    const summaryVatExempt = extracted.gross_total / statutoryRule.vat_divisor;
+    // Only VAT-inclusive goods (Drugs/Medicines & Medical Supplies not already
+    // VAT-exempt) have 12% VAT stripped; hospital, diagnostic, and physician
+    // services are VAT-exempt under NIRC Sec. 109(G) and take a straight 20%.
+    // Uses line-item VAT classification when line items are available; with no
+    // line items, the goods portion is unknown, so the conservative straight-20%
+    // basis is used to avoid overstating the overcharge.
     const legalVatAndDiscount =
-      extracted.gross_total -
-      summaryVatExempt +
-      summaryVatExempt * statutoryRule.discount_rate;
+      normalizedLineItems.length > 0
+        ? round2(
+            normalizedLineItems.reduce((sum, item, idx) => {
+              const eligible =
+                statutoryRule.eligible_categories.includes(item.category) ||
+                (statutoryRule.eligible_categories.includes("Room & Board") &&
+                  FACILITY_SERVICE_CATEGORIES.has(item.category));
+              if (!eligible) return sum;
+              const treatment =
+                auditedItems[idx]?.vat_treatment ??
+                vatTreatmentFor(
+                  item.category,
+                  Boolean(item.is_vat_exempt) ||
+                    detectVatExemptFromDescription(item.description)
+                );
+              return (
+                sum +
+                computeStatutoryRelief(
+                  item.total_amount,
+                  treatment,
+                  statutoryRule.vat_divisor,
+                  statutoryRule.discount_rate
+                )
+              );
+            }, 0)
+          )
+        : round2(extracted.gross_total * statutoryRule.discount_rate);
     const legalNetPayable = Math.max(
       0,
       extracted.gross_total - legalVatAndDiscount - extracted.philhealth_total
@@ -706,12 +736,51 @@ export function runAuditEngine(
     });
   }
 
-  const totalHciCap = matchedPackages.reduce((sum, p) => sum + p.hci_fee, 0);
-  const totalPfCap = matchedPackages.reduce((sum, p) => sum + p.prof_fee, 0);
-  const totalPhilHealthRate = matchedPackages.reduce(
-    (sum, p) => sum + p.total_rate,
-    0
+  // PhilHealth 2nd Case Rate rule: when more than one case rate applies to a
+  // single confinement, the higher-value (primary) case rate is paid in full and
+  // the second case rate at 50%. At most two case rates are claimable.
+  const rankedPackages = [...matchedPackages].sort(
+    (a, b) => b.total_rate - a.total_rate
   );
+  const claimablePackages = rankedPackages.slice(0, 2);
+  const caseRateShare = (idx: number) => (idx === 0 ? 1 : 0.5);
+  const totalHciCap = round2(
+    claimablePackages.reduce((sum, p, idx) => sum + p.hci_fee * caseRateShare(idx), 0)
+  );
+  const totalPfCap = round2(
+    claimablePackages.reduce((sum, p, idx) => sum + p.prof_fee * caseRateShare(idx), 0)
+  );
+  const totalPhilHealthRate = round2(
+    claimablePackages.reduce(
+      (sum, p, idx) => sum + p.total_rate * caseRateShare(idx),
+      0
+    )
+  );
+
+  if (rankedPackages.length > 1) {
+    const [primary, secondary] = rankedPackages;
+    const excluded = rankedPackages.slice(2);
+    flags.push({
+      type: "compliance_note",
+      severity: "low",
+      title: "PhilHealth 2nd Case Rate Rule Applied",
+      description: `Multiple case rates matched this confinement. Expected PhilHealth benefit uses 100% of the primary case rate ${primary.keyword} (${primary.code}, ${formatPHP(primary.total_rate)}) plus 50% of the second case rate ${secondary.keyword} (${secondary.code}, ${formatPHP(round2(secondary.total_rate * 0.5))} of ${formatPHP(secondary.total_rate)}), for a combined ${formatPHP(totalPhilHealthRate)} (HCI: ${formatPHP(totalHciCap)} | PF: ${formatPHP(totalPfCap)}).${excluded.length > 0 ? ` Only two case rates may be claimed per confinement, so ${excluded.map((p) => `${p.keyword} (${p.code})`).join(", ")} ${excluded.length === 1 ? "was" : "were"} excluded.` : ""}`,
+      potential_savings: 0,
+    });
+  }
+
+  const estimatedSplitPackages = claimablePackages.filter(
+    (p) => p.is_estimated_split
+  );
+  if (estimatedSplitPackages.length > 0) {
+    flags.push({
+      type: "compliance_note",
+      severity: "low",
+      title: "Estimated 70/30 HCI/PF Split Used",
+      description: `An explicit HCI vs. Professional Fee split was not listed for ${estimatedSplitPackages.map((p) => `${p.keyword} (${p.code})`).join(", ")}, so an estimated 70% HCI / 30% PF fallback split was used for facility vs. doctor cap checks. Verify the exact circular split with hospital billing.`,
+      potential_savings: 0,
+    });
+  }
 
   const lineLevelHciDeducted = normalizedLineItems
     .filter((i) => i.category !== "Professional Fees")
@@ -891,21 +960,25 @@ export function runAuditEngine(
   negotiationBrief += `Total Billed: ${formatPHP(grossTotal)} | Current Due: ${formatPHP(actualOutOfPocket)}\n`;
 
   if (matchedPackages.length > 0) {
-    negotiationBrief += `Identified Case Packages: ${matchedPackages.map((p) => `${p.keyword} (Case ${p.code} - ${formatPHP(p.total_rate)})`).join("; ")}\n\n`;
+    negotiationBrief += `Identified Case Packages: ${matchedPackages.map((p) => `${p.keyword} (Case ${p.code} - ${formatPHP(p.total_rate)})`).join("; ")}\n`;
+    if (rankedPackages.length > 1) {
+      negotiationBrief += `PhilHealth 2nd Case Rate Rule: 100% of primary case rate ${rankedPackages[0].code} + 50% of second case rate ${rankedPackages[1].code} = ${formatPHP(totalPhilHealthRate)} expected benefit (maximum of two case rates per confinement).\n`;
+    }
+    negotiationBrief += `\n`;
   }
 
   if (disputedOverchargeTotal > 0) {
-    negotiationBrief += `⚠️ UNBUNDLED HOSPITAL CHARGES FLAGGED: ${formatPHP(disputedOverchargeTotal)}\n`;
+    negotiationBrief += `UNBUNDLED HOSPITAL CHARGES FLAGGED: ${formatPHP(disputedOverchargeTotal)}\n`;
     negotiationBrief += `Under PhilHealth All-Case-Rates, mandatory surgical/medical consumables are inclusive to the facility fee.\n\n`;
   }
 
   if (caseRateShortfall > 0) {
-    negotiationBrief += `⚠️ UNDER-DEDUCTED PHILHEALTH CASE RATE: ${formatPHP(caseRateShortfall)}\n`;
+    negotiationBrief += `UNDER-DEDUCTED PHILHEALTH CASE RATE: ${formatPHP(caseRateShortfall)}\n`;
     negotiationBrief += `Hospital deducted ${formatPHP(extracted.philhealth_total)} instead of the ${formatPHP(totalPhilHealthRate)} case rate allocation (HCI: ${formatPHP(totalHciCap)} | PF: ${formatPHP(totalPfCap)}).\n\n`;
   }
 
   if (estimatedSeniorSavings > 0) {
-    negotiationBrief += `⚠️ STATUTORY ${privilegeLabel.toUpperCase()} RELIEF DISCREPANCY: ${formatPHP(estimatedSeniorSavings)}\n`;
+    negotiationBrief += `STATUTORY ${privilegeLabel.toUpperCase()} RELIEF DISCREPANCY: ${formatPHP(estimatedSeniorSavings)}\n`;
     if (totalAlreadyCreditedDiscount > 0) {
       negotiationBrief += `Total Statutory Entitlement: ${formatPHP(totalExpectedStatutoryRelief)} | Less Already Credited on SOA: ${formatPHP(totalAlreadyCreditedDiscount)} | Net Additional Relief: ${formatPHP(estimatedSeniorSavings)}\n`;
     }
@@ -914,17 +987,17 @@ export function runAuditEngine(
   }
 
   if (arithmeticDiscrepancy > 0) {
-    negotiationBrief += `⚠️ SOA ARITHMETIC / ROUNDING DISCREPANCY: ${formatPHP(arithmeticDiscrepancy)}\n`;
+    negotiationBrief += `SOA ARITHMETIC / ROUNDING DISCREPANCY: ${formatPHP(arithmeticDiscrepancy)}\n`;
     negotiationBrief += `Printed balance (${formatPHP(actualOutOfPocket)}) exceeds computed net balance (${formatPHP(computedNetBalance)}) by ${formatPHP(arithmeticDiscrepancy)}.\n\n`;
   }
 
   if (nbbSavings > 0) {
-    negotiationBrief += `⚠️ NO BALANCE BILLING (NBB) / ZERO CO-PAYMENT ENTITLEMENT: ${formatPHP(nbbSavings)}\n`;
+    negotiationBrief += `NO BALANCE BILLING (NBB) / ZERO CO-PAYMENT ENTITLEMENT: ${formatPHP(nbbSavings)}\n`;
     negotiationBrief += `Applicable under PhilHealth Circular 2016-0020 and Republic Act No. 11223 (UHC Act) for Basic / Ward accommodation.\n\n`;
   }
 
   if (!eligibilitySnapshot.has_mdr_or_pin) {
-    negotiationBrief += `📋 PRE-DISCHARGE REMINDER: Present your PhilHealth MDR / PIN (retrievable via the PhilHealth Member Portal or eGovPH Super App) to the billing clerk prior to settlement.\n\n`;
+    negotiationBrief += `PRE-DISCHARGE REMINDER: Present your PhilHealth MDR / PIN (retrievable via the PhilHealth Member Portal or eGovPH Super App) to the billing clerk prior to settlement.\n\n`;
   }
 
   negotiationBrief += `ADJUSTED FAIR BALANCE DUE: ${formatPHP(fairOutOfPocket)}\n`;

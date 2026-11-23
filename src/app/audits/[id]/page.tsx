@@ -758,6 +758,11 @@ export default function AuditStudioPage({
                           AI-Estimated (Unverified)
                         </span>
                       )}
+                      {pkg.is_estimated_split && (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                          Est. 70/30 HCI/PF split
+                        </span>
+                      )}
                     </React.Fragment>
                   );
                 })

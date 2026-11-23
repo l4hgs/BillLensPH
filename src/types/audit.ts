@@ -36,6 +36,10 @@ export interface AuditDoc {
   fileSize: string;
   fileType: "PDF" | "DOCX" | "Scan";
   dateText: string;
+  /** ISO timestamp from `audits.created_at`, used for sorting and date filters. */
+  createdAt: string;
+  /** Total disputable amount for analyzed audits; undefined until the audit engine has run. */
+  flaggedAmount?: number;
   isLive?: boolean;
   tags: {
     label: string;
@@ -167,6 +171,7 @@ export interface ItemOverride {
   quantity?: number;
   unit_price?: number;
   total_amount?: number;
+  is_vat_exempt?: boolean;
   /** Forces the traffic-light tier, bypassing the rule engine for this item. */
   status?: AuditTier;
   note?: string;
@@ -229,6 +234,8 @@ export interface MatchedCasePackage {
   source_url?: string | null;
   /** False when the package was auto-discovered by AI rather than verified from an official PhilHealth circular. */
   is_verified?: boolean;
+  /** True when `hci_fee` / `prof_fee` were estimated via the 70/30 fallback rather than explicitly listed in a circular. */
+  is_estimated_split?: boolean;
 }
 
 /**

@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import type { CatalogPackage, ExtractedBillData } from "@/types/audit";
-import { getGeminiModelFallbackList } from "@/lib/gemini";
+import {
+  fetchGeminiWithRetry,
+  getGeminiModelFallbackList,
+} from "@/lib/gemini";
 import { bestPackageForDiagnosis } from "@/lib/itemMatcher";
 import {
   normalizeSeedPackage,
@@ -113,7 +116,7 @@ export async function discoverPhilHealthPackageWithGemini(
   for (const model of models) {
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-      const response = await fetch(endpoint, {
+      const response = await fetchGeminiWithRetry(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -279,6 +282,7 @@ export async function ensureBillPackagesInCatalog(
           effective_to: item.effective_to ?? null,
           source_url: item.source_url ?? "ai_grounded:philhealth-acr",
           is_verified: false,
+          is_estimated_split: item.is_estimated_split,
         },
         item.aliases
       )

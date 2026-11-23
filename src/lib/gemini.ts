@@ -142,6 +142,58 @@ export interface GeminiVisionOptions {
   promptOverride?: string;
 }
 
+export const GEMINI_REQUEST_TIMEOUT_MS = 25_000;
+const RETRYABLE_GEMINI_STATUSES = new Set([429, 503]);
+const GEMINI_RETRY_BACKOFF_MS = [800, 1600] as const;
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Executes a Gemini REST API `fetch` with a hard 25s timeout (`AbortSignal.timeout`)
+ * and brief exponential backoff (800ms -> 1600ms) on transient 429 / 503 responses
+ * before letting the caller fall back to the next model in `GEMINI_FLASH_MODELS`.
+ */
+export async function fetchGeminiWithRetry(
+  endpoint: string,
+  init: Omit<RequestInit, "signal">,
+  timeoutMs = GEMINI_REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  let lastResponse: Response | null = null;
+
+  for (let attempt = 0; attempt <= GEMINI_RETRY_BACKOFF_MS.length; attempt++) {
+    const response = await fetch(endpoint, {
+      ...init,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (response.ok) {
+      return response;
+    }
+
+    lastResponse = response;
+
+    if (
+      RETRYABLE_GEMINI_STATUSES.has(response.status) &&
+      attempt < GEMINI_RETRY_BACKOFF_MS.length
+    ) {
+      const retryAfterHeader = response.headers.get("retry-after");
+      const retryAfterSec = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      const delayMs =
+        Number.isFinite(retryAfterSec) && retryAfterSec > 0 && retryAfterSec <= 5
+          ? Math.round(retryAfterSec * 1000)
+          : GEMINI_RETRY_BACKOFF_MS[attempt];
+      await sleepMs(delayMs);
+      continue;
+    }
+
+    return response;
+  }
+
+  return lastResponse!;
+}
+
 export async function extractBillWithGemini(
   options: GeminiVisionOptions
 ): Promise<ExtractedBillData> {
@@ -183,7 +235,7 @@ export async function extractBillWithGemini(
         },
       };
 
-      const response = await fetch(endpoint, {
+      const response = await fetchGeminiWithRetry(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -269,6 +321,77 @@ export async function extractMultiPageBillWithGemini(
 
 const DEFAULT_HOSPITAL_NAME = "Philippine Healthcare Institution";
 
+function nonNegativeAmount(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Deduction columns (PhilHealth, discount) are sometimes printed as negatives
+ * or in parentheses; the sign is a display convention, so use the magnitude.
+ */
+function deductionAmount(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.abs(n) : 0;
+}
+
+/**
+ * Clamps unrecognized negative charge amounts to ₱0.00. Recognized SOA credit
+ * rows (PhilHealth, Senior/PWD discount, payments) are already routed into the
+ * header totals by `sanitizeExtractedBill`, so a remaining negative charge line
+ * is an OCR artifact or unlabeled reversal and must never reduce or inflate totals.
+ * Deduction columns keep their magnitude.
+ */
+export function clampLineItemAmounts(
+  item: ExtractedLineItem
+): ExtractedLineItem {
+  return {
+    ...item,
+    quantity: Math.max(1, Number(item.quantity) || 1),
+    unit_price: nonNegativeAmount(item.unit_price),
+    total_amount: nonNegativeAmount(item.total_amount),
+    philhealth_deducted: deductionAmount(item.philhealth_deducted),
+    discount_applied: deductionAmount(item.discount_applied),
+    ...(item.balance !== undefined && item.balance !== null
+      ? { balance: nonNegativeAmount(item.balance) }
+      : {}),
+  };
+}
+
+/** Normalized description + quantity + unit price + total used to spot repeated lines across pages. */
+export function lineItemDedupKey(item: ExtractedLineItem): string {
+  const description = String(item.description || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const quantity = Math.max(1, Number(item.quantity) || 1);
+  const unitPrice = nonNegativeAmount(item.unit_price).toFixed(2);
+  const total = nonNegativeAmount(item.total_amount).toFixed(2);
+  return `${description}|${quantity}|${unitPrice}|${total}`;
+}
+
+/**
+ * Returns the length of the longest block where the tail of `previous` equals
+ * the head of `current` (the overlap produced by consecutive camera shots).
+ */
+export function countContiguousOverlap(
+  previous: string[],
+  current: string[]
+): number {
+  const max = Math.min(previous.length, current.length);
+  for (let k = max; k > 0; k--) {
+    let matches = true;
+    for (let i = 0; i < k; i++) {
+      if (previous[previous.length - k + i] !== current[i]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return k;
+  }
+  return 0;
+}
+
 /**
  * Merges per-page `ExtractedBillData` results into one combined statement.
  * Page 2+ line item IDs are prefixed (`page2-item-1`, `page3-item-1`, ...) so
@@ -296,6 +419,10 @@ export function mergeExtractedBills(
   let diagnosisOrProcedure: string | undefined;
   let isSeniorOrPwd = false;
   let statutoryDiscountType: StatutoryDiscountType = "regular";
+  let previousPageKeys: string[] = [];
+  let duplicateGross = 0;
+  let duplicatePhilhealth = 0;
+  let duplicateDiscount = 0;
 
   pages.forEach((page, pageIndex) => {
     const pageNum = pageIndex + 1;
@@ -333,7 +460,20 @@ export function mergeExtractedBills(
       if (trimmed) codeSet.add(trimmed);
     }
 
-    page.line_items.forEach((item, itemIdx) => {
+    // Overlapping camera shots repeat the tail of the previous page at the head
+    // of this page. Skip that contiguous overlap block so charges aren't double-counted.
+    const pageKeys = page.line_items.map(lineItemDedupKey);
+    const overlap = countContiguousOverlap(previousPageKeys, pageKeys);
+    previousPageKeys = pageKeys;
+
+    page.line_items.forEach((rawItem, itemIdx) => {
+      const item = clampLineItemAmounts(rawItem);
+      if (itemIdx < overlap) {
+        duplicateGross += item.total_amount;
+        duplicatePhilhealth += item.philhealth_deducted || 0;
+        duplicateDiscount += item.discount_applied || 0;
+        return;
+      }
       const itemId =
         pageNum === 1
           ? `item-${itemIdx + 1}`
@@ -372,7 +512,7 @@ export function mergeExtractedBills(
     ? lastPage.gross_total
     : Math.max(
         combinedItemsGross,
-        pages.reduce((sum, p) => sum + p.gross_total, 0)
+        pages.reduce((sum, p) => sum + p.gross_total, 0) - duplicateGross
       );
 
   const philhealthTotal = lastPageHasGrandTotal
@@ -383,7 +523,8 @@ export function mergeExtractedBills(
           (sum, item) => sum + (item.philhealth_deducted || 0),
           0
         ),
-        pages.reduce((sum, p) => sum + p.philhealth_total, 0)
+        pages.reduce((sum, p) => sum + p.philhealth_total, 0) -
+          duplicatePhilhealth
       );
 
   const seniorDiscountTotal = lastPageHasGrandTotal
@@ -394,7 +535,8 @@ export function mergeExtractedBills(
           (sum, item) => sum + (item.discount_applied || 0),
           0
         ),
-        pages.reduce((sum, p) => sum + p.senior_pwd_discount_total, 0)
+        pages.reduce((sum, p) => sum + p.senior_pwd_discount_total, 0) -
+          duplicateDiscount
       );
 
   const cashPaymentsTotal = lastPageHasGrandTotal
@@ -471,13 +613,14 @@ export function sanitizeExtractedBill(
         item.description || "Unspecified Medical Charge"
       ).trim();
       const rawItemRec = item as unknown as Record<string, unknown>;
-      const explicitLineDiscount =
+      const explicitLineDiscount = deductionAmount(
         Number(item.discount_applied) ||
-        Number(rawItemRec.explicitLineDiscount) ||
-        Number(rawItemRec.explicit_line_discount) ||
-        0;
-      const totalAmount = Number(item.total_amount) || 0;
-      const philhealthDeducted = Number(item.philhealth_deducted) || 0;
+          Number(rawItemRec.explicitLineDiscount) ||
+          Number(rawItemRec.explicit_line_discount) ||
+          0
+      );
+      const totalAmount = nonNegativeAmount(item.total_amount);
+      const philhealthDeducted = deductionAmount(item.philhealth_deducted);
       return {
         // Ids are index-based (never model-supplied) so they are always unique;
         // Audit Studio overrides are keyed by this id.
@@ -488,7 +631,7 @@ export function sanitizeExtractedBill(
           sanitizeCategory(item.category)
         ),
         quantity: Math.max(1, Number(item.quantity) || 1),
-        unit_price: Number(item.unit_price) || totalAmount || 0,
+        unit_price: nonNegativeAmount(item.unit_price) || totalAmount || 0,
         total_amount: totalAmount,
         philhealth_deducted: philhealthDeducted,
         discount_applied: explicitLineDiscount,
@@ -496,7 +639,7 @@ export function sanitizeExtractedBill(
           item.balance !== null &&
           item.balance !== undefined &&
           Number.isFinite(Number(item.balance))
-            ? Number(item.balance)
+            ? Math.max(0, Number(item.balance))
             : Math.max(
                 0,
                 totalAmount - philhealthDeducted - explicitLineDiscount

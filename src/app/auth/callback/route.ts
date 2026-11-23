@@ -8,8 +8,60 @@ import {
 } from "@/lib/supabase/clockSkewFetch";
 import type { Database } from "@/lib/supabase/database.types";
 
+function extractHostFromUrlOrHost(raw?: string): string | null {
+  if (!raw || !raw.trim()) return null;
+  const trimmed = raw.trim();
+  try {
+    if (trimmed.includes("://")) {
+      return new URL(trimmed).host.toLowerCase();
+    }
+    return new URL(`https://${trimmed}`).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function resolveSafeRedirectBase(request: Request, requestUrl: URL): string {
+  const origin = requestUrl.origin;
+  const isLocalEnv =
+    process.env.NODE_ENV === "development" ||
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1");
+
+  if (isLocalEnv) {
+    return origin;
+  }
+
+  const allowedHosts = new Set<string>([requestUrl.host.toLowerCase()]);
+  const envCandidates = [
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ];
+  for (const candidate of envCandidates) {
+    const parsedHost = extractHostFromUrlOrHost(candidate);
+    if (parsedHost) {
+      allowedHosts.add(parsedHost);
+    }
+  }
+
+  const rawForwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+
+  if (rawForwardedHost && allowedHosts.has(rawForwardedHost)) {
+    return `https://${rawForwardedHost}`;
+  }
+
+  return origin;
+}
+
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const requestUrl = new URL(request.url);
+  const { searchParams, origin } = requestUrl;
   const code = searchParams.get("code");
   const oauthError =
     searchParams.get("error_description") || searchParams.get("error");
@@ -31,13 +83,7 @@ export async function GET(request: Request) {
       (cookieNext ? decodeURIComponent(cookieNext) : "/scanner");
     const finalNext = resolvedNext.startsWith("/") ? resolvedNext : "/scanner";
 
-    const forwardedHost = request.headers.get("x-forwarded-host");
-    const isLocalEnv =
-      process.env.NODE_ENV === "development" ||
-      origin.includes("localhost") ||
-      origin.includes("127.0.0.1");
-    const redirectBase =
-      !isLocalEnv && forwardedHost ? `https://${forwardedHost}` : origin;
+    const redirectBase = resolveSafeRedirectBase(request, requestUrl);
     const redirectResponse = NextResponse.redirect(
       `${redirectBase}${finalNext}`
     );
@@ -112,25 +158,27 @@ export async function GET(request: Request) {
         const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
         if (serviceRoleKey && !supabaseUrl.includes("placeholder-project")) {
           try {
-            const adminClient = createSupabaseAdminClient(
+            const adminClient = createSupabaseAdminClient<Database>(
               supabaseUrl,
               serviceRoleKey,
               {
                 auth: { persistSession: false, autoRefreshToken: false },
               }
             );
+            await adminClient.from("profiles").delete().eq("id", user.id);
             await adminClient.auth.admin.deleteUser(user.id);
-          } catch {
-            // Fallback if service role deletion fails
+          } catch (cleanupErr) {
+            console.warn(
+              "Failed to clean up rejected OAuth sign-in user via service role client:",
+              cleanupErr
+            );
           }
+        } else {
+          console.warn(
+            "SUPABASE_SERVICE_ROLE_KEY is not configured; rejected OAuth sign-in user and profile could not be deleted via admin client."
+          );
         }
 
-        // Remove profile row (if not already cascade-deleted) and sign out the session
-        try {
-          await supabase.from("profiles").delete().eq("id", user.id);
-        } catch {
-          // Ignore if RLS blocks profile delete
-        }
         await supabase.auth.signOut();
 
         const rejectRedirect = NextResponse.redirect(

@@ -99,6 +99,18 @@ function normalizeToUIMessages(rawMessages: unknown): UIMessage[] {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Authentication required." },
+        { status: 401 }
+      );
+    }
+
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -110,7 +122,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json(
+          { error: "Invalid JSON request body." },
+          { status: 400 }
+        );
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON request body." },
+        { status: 400 }
+      );
+    }
     const auditId: string | undefined =
       typeof body.audit_id === "string"
         ? body.audit_id
@@ -137,11 +164,11 @@ export async function POST(req: NextRequest) {
 
     if (auditId) {
       try {
-        const supabase = await createClient();
         const { data: row } = await supabase
           .from("audits")
           .select("*")
           .eq("id", auditId)
+          .eq("user_id", user.id)
           .maybeSingle();
 
         if (row) {
@@ -233,17 +260,15 @@ export async function POST(req: NextRequest) {
         originalMessages: uiMessages,
         onError: (error) => {
           console.error("Gemini Chatbot stream error:", error);
-          if (error instanceof Error) return error.message;
-          return "Failed to stream response from Gemini Flash.";
+          return "Unable to stream response right now. Please try again.";
         },
       }),
     });
   } catch (err: unknown) {
     console.error("Audit Chatbot Chat API error:", err);
-    const message =
-      err instanceof Error
-        ? err.message
-        : "Failed to generate Chatbot response.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unable to generate a response right now. Please try again." },
+      { status: 500 }
+    );
   }
 }

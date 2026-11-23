@@ -60,6 +60,9 @@ export function applyOverridesToBill(
       quantity: override.quantity ?? item.quantity,
       unit_price: override.unit_price ?? item.unit_price,
       total_amount: total,
+      ...(override.is_vat_exempt !== undefined
+        ? { is_vat_exempt: override.is_vat_exempt }
+        : {}),
     };
 
     if (total !== item.total_amount) {

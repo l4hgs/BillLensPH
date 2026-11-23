@@ -386,6 +386,16 @@ export function ScanBackgroundProvider({
           }
 
           if (dbError || !insertedAudit?.id) {
+            const orphanPaths = uploadedFilesMeta
+              .map((f) => f.path)
+              .filter(Boolean);
+            if (orphanPaths.length > 0) {
+              try {
+                await supabase.storage.from("bill-uploads").remove(orphanPaths);
+              } catch {
+                // Best-effort cleanup of newly uploaded files on DB insert failure
+              }
+            }
             throw new Error(`Database staging failed: ${dbError?.message || "Unknown error"}`);
           }
 

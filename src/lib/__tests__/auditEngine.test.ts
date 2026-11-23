@@ -1117,4 +1117,375 @@ describe("Versioned packages & Multi-page OCR merge", () => {
     expect(audit.arithmetic_discrepancy).toBeCloseTo(0.5, 2);
     expect(audit.fair_out_of_pocket).toBeCloseTo(39562.17, 2);
   });
+
+  it("applies No Balance Billing (NBB) Zero Co-Payment for Senior/PWD in Basic Ward and waives it in Private Room", () => {
+    const baseNbbBill: ExtractedBillData = {
+      hospital_name: "Government Regional Medical Center",
+      case_rate_codes_detected: [],
+      is_senior_or_pwd: true,
+      statutory_discount_type: "senior",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Basic Ward Accommodation & Nursing Care",
+          category: "Room & Board",
+          quantity: 3,
+          unit_price: 2000,
+          total_amount: 6000,
+          philhealth_deducted: 0,
+          discount_applied: 0,
+          balance: 6000,
+        },
+      ],
+      gross_total: 6000,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 6000,
+    };
+
+    const wardAudit = runAuditEngine(baseNbbBill, {
+      auditId: "nbb-basic-ward",
+      referencePackages: CATALOG,
+      statutoryDiscountType: "senior",
+      eligibilitySnapshot: {
+        contributor_type: "indirect_nbb",
+        accommodation_type: "basic_ward",
+        has_mdr_or_pin: true,
+        facility_level: "level_2",
+      },
+    });
+
+    const nbbFlag = wardAudit.flags.find((f) => f.type === "nbb_violation");
+    expect(nbbFlag).toBeDefined();
+    expect(nbbFlag?.severity).toBe("high");
+    expect(wardAudit.senior_pwd_savings).toBeCloseTo(1200, 2);
+    expect(wardAudit.nbb_savings).toBeCloseTo(4800, 2);
+    expect(wardAudit.fair_out_of_pocket).toBe(0);
+    expect(wardAudit.negotiation_brief_summary).not.toContain("⚠️");
+    expect(wardAudit.negotiation_brief_summary).not.toContain("📋");
+
+    const privateAudit = runAuditEngine(baseNbbBill, {
+      auditId: "nbb-private-room",
+      referencePackages: CATALOG,
+      statutoryDiscountType: "senior",
+      eligibilitySnapshot: {
+        contributor_type: "indirect_nbb",
+        accommodation_type: "non_basic_private",
+        has_mdr_or_pin: true,
+        facility_level: "level_2",
+      },
+    });
+
+    expect(privateAudit.flags.some((f) => f.type === "nbb_violation")).toBe(
+      false
+    );
+    expect(
+      privateAudit.flags.some((f) =>
+        f.title.includes("Private Room Co-Payment Applies")
+      )
+    ).toBe(true);
+    expect(privateAudit.nbb_savings).toBe(0);
+    expect(privateAudit.fair_out_of_pocket).toBeCloseTo(4800, 2);
+  });
+
+  it("enforces PhilHealth 2nd Case Rate rule (100% primary + 50% secondary, max 2 packages)", () => {
+    const dualCatalog: CatalogPackage[] = [
+      {
+        code: "47562",
+        keyword: "Laparoscopic Cholecystectomy",
+        total_rate: 38750,
+        hci_fee: 24750,
+        prof_fee: 14000,
+        inclusive_items: ["Trocar", "Endoclip"],
+        aliases: [{ alias: "endoclip", kind: "token" }],
+      },
+      {
+        code: "44970",
+        keyword: "Laparoscopic Appendectomy",
+        total_rate: 24000,
+        hci_fee: 14400,
+        prof_fee: 9600,
+        inclusive_items: ["Trocar", "PACU"],
+        aliases: [{ alias: "trocar", kind: "token" }],
+      },
+      {
+        code: "J18.9",
+        keyword: "Pneumonia Moderate Risk",
+        total_rate: 15000,
+        hci_fee: 10500,
+        prof_fee: 4500,
+        inclusive_items: ["CBC", "Chest X-Ray"],
+        aliases: [],
+      },
+    ];
+
+    const bill: ExtractedBillData = {
+      hospital_name: "St. Luke's Medical Center",
+      // 3 codes detected: 47562 (₱38,750 primary 100%), 44970 (₱24,000 secondary 50% = ₱12,000), J18.9 (excluded)
+      case_rate_codes_detected: ["44970", "47562", "J18.9"],
+      line_items: [
+        {
+          id: "item-1",
+          description: "Operating Room & Surgical Care",
+          category: "Operating Room",
+          quantity: 1,
+          unit_price: 90000,
+          total_amount: 90000,
+          philhealth_deducted: 0,
+          discount_applied: 0,
+          balance: 90000,
+        },
+      ],
+      gross_total: 90000,
+      philhealth_total: 25000,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 65000,
+    };
+
+    const audit = runAuditEngine(bill, {
+      auditId: "dual-case-rate",
+      referencePackages: dualCatalog,
+      statutoryDiscountType: "regular",
+    });
+
+    // Combined expected rate: 38,750 + (24,000 * 0.5) = 50,750; shortfall = 50,750 - 25,000 = 25,750
+    expect(audit.case_rate_shortfall).toBeCloseTo(25750, 2);
+    const secondRateNote = audit.flags.find((f) =>
+      f.title.includes("2nd Case Rate Rule Applied")
+    );
+    expect(secondRateNote).toBeDefined();
+    expect(secondRateNote?.description).toContain("100%");
+    expect(secondRateNote?.description).toContain("50%");
+    expect(secondRateNote?.description).toContain("J18.9");
+    expect(audit.negotiation_brief_summary).toContain(
+      "PhilHealth 2nd Case Rate Rule"
+    );
+    expect(audit.negotiation_brief_summary).not.toContain("⚠️");
+  });
+
+  it("refines check 2b summary-level VAT math on mixed VATable goods and VAT-exempt hospital services", () => {
+    // Mixed bill:
+    // - Pharmacy (VAT-inclusive goods): ₱11,200 -> legal relief = 11,200 - (11,200 / 1.12 * 0.80) = ₱3,200
+    // - Room & Board (NIRC Sec. 109(G) VAT-exempt service): ₱20,000 -> legal relief = 20,000 * 0.20 = ₱4,000
+    // Total legal relief = ₱7,200. With PhilHealth ₱10,000, legalNetPayable = 31,200 - 7,200 - 10,000 = ₱14,000.
+    // Hospital credited ₱4,000 in summary and printed ₱17,200 due -> summary overcharge = ₱3,200.
+    const mixedBill: ExtractedBillData = {
+      hospital_name: "Makati Medical Center",
+      case_rate_codes_detected: [],
+      is_senior_or_pwd: true,
+      statutory_discount_type: "senior",
+      line_items: [
+        {
+          id: "item-1",
+          description: "Pharmacy - Antibiotics",
+          category: "Drugs/Medicines",
+          quantity: 1,
+          unit_price: 11200,
+          total_amount: 11200,
+          philhealth_deducted: 0,
+          discount_applied: 3200,
+          balance: 8000,
+        },
+        {
+          id: "item-2",
+          description: "Room & Board - Ward",
+          category: "Room & Board",
+          quantity: 1,
+          unit_price: 20000,
+          total_amount: 20000,
+          philhealth_deducted: 0,
+          discount_applied: 4000,
+          balance: 16000,
+        },
+      ],
+      gross_total: 31200,
+      philhealth_total: 10000,
+      senior_pwd_discount_total: 4000,
+      net_balance_due: 17200,
+    };
+
+    const audit = runAuditEngine(mixedBill, {
+      auditId: "summary-vat-2b",
+      referencePackages: [],
+      statutoryDiscountType: "senior",
+    });
+
+    const seqFlag = audit.flags.find(
+      (f) => f.type === "wrong_deduction_sequence"
+    );
+    expect(seqFlag).toBeDefined();
+    expect(seqFlag?.potential_savings).toBeCloseTo(3200, 2);
+    expect(audit.senior_pwd_savings).toBeCloseTo(3200, 2);
+    expect(audit.fair_out_of_pocket).toBeCloseTo(14000, 2);
+  });
+
+  it("deduplicates overlapping tail/head lines in mergeExtractedBills while preserving mid-page duplicates and clamping negatives", () => {
+    const page1: ExtractedBillData = {
+      hospital_name: "Philippine General Hospital",
+      case_rate_codes_detected: ["47562"],
+      line_items: [
+        {
+          id: "item-1",
+          description: "Operating Room Fee",
+          category: "Operating Room",
+          quantity: 1,
+          unit_price: 10000,
+          total_amount: 10000,
+        },
+        {
+          id: "item-2",
+          description: "Cefazolin 1g IV",
+          category: "Drugs/Medicines",
+          quantity: 1,
+          unit_price: 350,
+          total_amount: 350,
+        },
+        {
+          id: "item-3",
+          description: "IV Cannula G18",
+          category: "Medical Supplies",
+          quantity: 2,
+          unit_price: 150,
+          total_amount: 300,
+        },
+      ],
+      gross_total: 10650,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 10650,
+    };
+
+    const page2: ExtractedBillData = {
+      hospital_name: "Philippine General Hospital",
+      case_rate_codes_detected: ["47562"],
+      line_items: [
+        // Overlapping tail from page 1
+        {
+          id: "item-1",
+          description: "Cefazolin 1g IV",
+          category: "Drugs/Medicines",
+          quantity: 1,
+          unit_price: 350,
+          total_amount: 350,
+        },
+        {
+          id: "item-2",
+          description: "IV Cannula G18",
+          category: "Medical Supplies",
+          quantity: 2,
+          unit_price: 150,
+          total_amount: 300,
+        },
+        // New charge + legitimate second dose of Cefazolin later on page 2 + negative OCR noise
+        {
+          id: "item-3",
+          description: "Recovery Room",
+          category: "Room & Board",
+          quantity: 1,
+          unit_price: 2000,
+          total_amount: 2000,
+        },
+        {
+          id: "item-4",
+          description: "Cefazolin 1g IV",
+          category: "Drugs/Medicines",
+          quantity: 1,
+          unit_price: 350,
+          total_amount: 350,
+        },
+        {
+          id: "item-5",
+          description: "Unrecognized Adjustment",
+          category: "Miscellaneous",
+          quantity: 1,
+          unit_price: -500,
+          total_amount: -500,
+        },
+      ],
+      gross_total: 2500,
+      philhealth_total: 0,
+      senior_pwd_discount_total: 0,
+      net_balance_due: 2500,
+    };
+
+    const merged = mergeExtractedBills([page1, page2]);
+
+    // 3 from page 1 + 3 non-overlapping from page 2 = 6 items
+    expect(merged.line_items).toHaveLength(6);
+    expect(
+      merged.line_items.filter((i) => i.description === "Cefazolin 1g IV")
+    ).toHaveLength(2);
+    expect(merged.line_items[5].total_amount).toBe(0);
+    // Gross total = 10,000 + 350 + 300 + 2,000 + 350 + 0 = 13,000
+    expect(merged.gross_total).toBeCloseTo(13000, 2);
+  });
+
+  it("reconciles HCI/PF splits in normalizeSeedPackage and flags 70/30 estimated splits in runAuditEngine", () => {
+    const inconsistent = normalizeSeedPackage({
+      case_code: "99991",
+      procedure_keyword: "Inconsistent Split Procedure",
+      hci_fee: 14000,
+      prof_fee: 6000,
+      total_case_rate: 25000,
+    });
+    expect(inconsistent.total_case_rate).toBe(20000);
+    expect(inconsistent.is_estimated_split).toBeUndefined();
+
+    const totalOnly = normalizeSeedPackage({
+      case_code: "99992",
+      procedure_keyword: "Total Only AI Procedure",
+      total_case_rate: 10000,
+      source_url: "ai_grounded:philhealth-acr",
+      is_verified: false,
+    });
+    expect(totalOnly.hci_fee).toBe(7000);
+    expect(totalOnly.prof_fee).toBe(3000);
+    expect(totalOnly.is_estimated_split).toBe(true);
+
+    const catalogPkg = toCatalogPackage(
+      {
+        case_code: totalOnly.case_code,
+        procedure_keyword: totalOnly.procedure_keyword,
+        hci_fee: totalOnly.hci_fee,
+        prof_fee: totalOnly.prof_fee,
+        total_case_rate: totalOnly.total_case_rate,
+        inclusive_items: totalOnly.inclusive_items,
+        source_url: totalOnly.source_url,
+        is_verified: totalOnly.is_verified,
+        is_estimated_split: totalOnly.is_estimated_split,
+      },
+      totalOnly.aliases
+    );
+
+    const audit = runAuditEngine(
+      {
+        hospital_name: "City General Hospital",
+        case_rate_codes_detected: ["99992"],
+        line_items: [
+          {
+            id: "item-1",
+            description: "Ward Care",
+            category: "Room & Board",
+            quantity: 1,
+            unit_price: 15000,
+            total_amount: 15000,
+          },
+        ],
+        gross_total: 15000,
+        philhealth_total: 10000,
+        senior_pwd_discount_total: 0,
+        net_balance_due: 5000,
+      },
+      {
+        auditId: "estimated-split-note",
+        referencePackages: [catalogPkg],
+        statutoryDiscountType: "regular",
+      }
+    );
+
+    expect(audit.detected_case_packages[0].is_estimated_split).toBe(true);
+    expect(
+      audit.flags.some((f) => f.title === "Estimated 70/30 HCI/PF Split Used")
+    ).toBe(true);
+  });
 });
